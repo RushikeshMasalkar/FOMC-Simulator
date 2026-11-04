@@ -163,9 +163,9 @@ def test_no_nonhold_evaluation_reports_na(tmp_path):
     table = evaluate(df, {'Always-hold': 'always', 'Market-only logit': 'p_mkt_'}, tmp_path)
     assert table.loc['Always-hold', 'accuracy'] == 1
     assert np.isnan(table.loc['Always-hold', 'mcc'])
-    assert 'Non-hold: N/A (no non-hold meetings)' in (tmp_path / 'ablation.md').read_text()
-    assert 'N/A' in (tmp_path / 'ablation.md').read_text()
-    report = json.loads((tmp_path / 'confusion_and_classes.json').read_text())
+    assert 'Non-hold: N/A (no non-hold meetings)' in (tmp_path / 'ablation.md').read_text(encoding='utf-8')
+    assert 'N/A' in (tmp_path / 'ablation.md').read_text(encoding='utf-8')
+    report = json.loads((tmp_path / 'confusion_and_classes.json').read_text(encoding='utf-8'))
     assert report['Always-hold']['non_hold'] is None
     assert report['Always-hold']['recall'] == [None, 1.0, None]
 
@@ -255,21 +255,21 @@ def test_fusion_cli_synthetic_integration_and_backup(tmp_path):
     from extension.run_all import main, parser, market_settings
     out = tmp_path / 'results'; out.mkdir()
     args = parser().parse_args(['--stage', 'fusion', '--outdir', str(out)])
-    (out / 'market_metadata.json').write_text(json.dumps({'settings': market_settings(args)}))
+    (out / 'market_metadata.json').write_text(json.dumps({'settings': market_settings(args)}), encoding='utf-8')
     dates = pd.to_datetime(['2023-02-01','2023-05-03','2024-03-20','2024-09-18'])
     pred = pd.DataFrame({'Date': dates, 'y': [2,2,1,0], 'p_mkt_cut': [.2]*4,
                          'p_mkt_hold': [.6]*4, 'p_mkt_hike': [.2]*4,
                          'train_max_date': pd.to_datetime(['2022-12-14']*2 + ['2023-12-13']*2),
                          'test_year': [2023,2023,2024,2024]})
     pred.to_csv(out / 'market_oos.csv', index=False)
-    (out / 'old_result.txt').write_text('do not overwrite')
+    (out / 'old_result.txt').write_text('do not overwrite', encoding='utf-8')
     assert main(['--stage', 'fusion', '--outdir', str(out)]) == 0
     assert len(pd.read_csv(out / 'phase2/predictions.csv')) == 2
     assert (out / 'phase2/ablation.md').exists()
-    prov = json.loads((out / 'baseline_provenance.json').read_text())
+    prov = json.loads((out / 'baseline_provenance.json').read_text(encoding='utf-8'))
     assert any(x['source'] == 'recovered_from_completed_voting_tasks' for x in prov)
     backups = list((tmp_path / 'results_backups').glob('*/old_result.txt'))
-    assert len(backups) == 1 and backups[0].read_text() == 'do not overwrite'
+    assert len(backups) == 1 and backups[0].read_text(encoding='utf-8') == 'do not overwrite'
 
 
 def test_gemini_html_400_sdk_wire_request_and_redaction(tmp_path, monkeypatch, capsys):
@@ -299,7 +299,7 @@ def test_gemini_html_400_sdk_wire_request_and_redaction(tmp_path, monkeypatch, c
     monkeypatch.setenv('GEMINI_API_KEY', secret)
     monkeypatch.setenv('HTTPS_PROXY', 'http://private-user:private-password@private-proxy:8080')
     outdir = tmp_path / 'existing-results'; outdir.mkdir()
-    (outdir / 'result.txt').write_text('unchanged')
+    (outdir / 'result.txt').write_text('unchanged', encoding='utf-8')
     before = set(outdir.iterdir())
     assert main(['--stage','probe','--provider','gemini','--model','gemini-3.1-flash-lite',
                  '--max_calls','1','--outdir',str(outdir)]) == 1
@@ -312,7 +312,7 @@ def test_gemini_html_400_sdk_wire_request_and_redaction(tmp_path, monkeypatch, c
     for value in (secret, 'private-user', 'private-password', 'private-proxy', 'secret-proxy-name'):
         assert value not in output
     assert set(outdir.iterdir()) == before
-    assert (outdir / 'result.txt').read_text() == 'unchanged'
+    assert (outdir / 'result.txt').read_text(encoding='utf-8') == 'unchanged'
 
 
 def test_gemini_sanitizes_json_error_and_request_query(monkeypatch):
@@ -444,8 +444,8 @@ def test_diagnose_mock_isolated_fake_key_and_no_result_writes(tmp_path, monkeypa
     monkeypatch.setattr(subprocess, 'run', run)
     out = tmp_path / 'results'; out.mkdir()
     backups = tmp_path / 'results_backups'; backups.mkdir()
-    (out / 'fusion.txt').write_text('keep fusion results')
-    (backups / 'backup.txt').write_text('keep backup')
+    (out / 'fusion.txt').write_text('keep fusion results', encoding='utf-8')
+    (backups / 'backup.txt').write_text('keep backup', encoding='utf-8')
     assert main(['--stage', 'diagnose', '--provider', 'gemini', '--outdir', str(out)]) == 0
     captured = capsys.readouterr()
     output = captured.out + captured.err
@@ -458,9 +458,9 @@ def test_diagnose_mock_isolated_fake_key_and_no_result_writes(tmp_path, monkeypa
     assert os.environ['GEMINI_API_KEY'] == actual_key and os.environ['GOOGLE_API_KEY'] == other_key
     assert os.environ['HTTPS_PROXY'] == proxy
     assert sorted(p.name for p in out.iterdir()) == ['fusion.txt']
-    assert (out / 'fusion.txt').read_text() == 'keep fusion results'
+    assert (out / 'fusion.txt').read_text(encoding='utf-8') == 'keep fusion results'
     assert sorted(p.name for p in backups.iterdir()) == ['backup.txt']
-    assert (backups / 'backup.txt').read_text() == 'keep backup'
+    assert (backups / 'backup.txt').read_text(encoding='utf-8') == 'keep backup'
 
 
 def test_mock_worker_uses_fake_key_blocks_socket_and_does_not_print_headers(monkeypatch, capsys):
@@ -680,7 +680,7 @@ def test_ensemble_cli_writes_audit_and_refuses_to_overwrite(tmp_path, monkeypatc
     votes = pd.read_csv(out / 'ensemble_votes.csv')
     meetings = pd.read_csv(out / 'ensemble_meetings.csv')
     probs = pd.read_csv(out / 'ensemble.csv')
-    report = json.loads((out / 'ensemble_run.json').read_text())
+    report = json.loads((out / 'ensemble_run.json').read_text(encoding='utf-8'))
     assert len(votes) == 6 and (votes.review_status == 'reported_inconsistency').sum() == 1
     assert meetings.resolved_samples.iloc[0] == 1 and meetings.unresolved_samples.iloc[0] == 1
     assert probs.ensemble_policy.iloc[0] == 'resolved_only_strict_majority_v1'
@@ -709,11 +709,22 @@ def test_metrics_rejects_tied_maxima_instead_of_defaulting_to_cut():
         metrics([0], [[.5, .5, 0.]])
 
 
-def test_final_eval_excludes_tied_maxima_from_common_intersection(tmp_path):
+def test_final_eval_excludes_tied_maxima_from_common_intersection(tmp_path, monkeypatch):
     from extension.run_all import main, parser, market_settings
+    # Simulate the Windows cp1252 default for any Path text I/O without an
+    # explicit encoding, regardless of this machine's locale or UTF-8 mode.
+    original_write_text, original_read_text = Path.write_text, Path.read_text
+    def legacy_write(path, data, encoding=None, errors=None, **kwargs):
+        return original_write_text(path, data, encoding=encoding or 'cp1252', errors=errors, **kwargs)
+    def legacy_read(path, encoding=None, errors=None, **kwargs):
+        return original_read_text(path, encoding=encoding or 'cp1252', errors=errors, **kwargs)
+    monkeypatch.setattr(Path, 'write_text', legacy_write)
+    monkeypatch.setattr(Path, 'read_text', legacy_read)
+    with pytest.raises(UnicodeEncodeError):
+        (tmp_path / 'legacy_encoding_probe.txt').write_text('\u2212')
     out = tmp_path / 'results'; out.mkdir()
     args = parser().parse_args(['--stage', 'eval', '--provider', 'gemini', '--outdir', str(out)])
-    (out / 'market_metadata.json').write_text(json.dumps({'settings': market_settings(args)}))
+    (out / 'market_metadata.json').write_text(json.dumps({'settings': market_settings(args)}), encoding='utf-8')
     dates = pd.to_datetime(['2023-02-01','2023-05-03','2024-03-20','2024-09-18'])
     pd.DataFrame({'Date': dates, 'y': [2,2,1,0], 'p_mkt_cut': [.2]*4,
                   'p_mkt_hold': [.6]*4, 'p_mkt_hike': [.2]*4,
@@ -730,6 +741,7 @@ def test_final_eval_excludes_tied_maxima_from_common_intersection(tmp_path):
     predictions = pd.read_csv(out / 'evaluation_predictions.csv')
     assert predictions.Date.tolist() == ['2024-09-18']
     assert len(pd.read_csv(out / 'ablation.csv')) == 6
+    assert 'full \u2212 replication' in (out / 'ablation.md').read_text(encoding='utf-8')
 
 
 def test_failed_ensemble_cli_records_invalid_counts_and_preserves_cache(tmp_path, monkeypatch, capsys):
@@ -749,7 +761,7 @@ def test_failed_ensemble_cli_records_invalid_counts_and_preserves_cache(tmp_path
     assert main(common + ['--outdir', str(out1)]) == 1
     captured = capsys.readouterr()
     assert secret not in captured.out + captured.err
-    report = json.loads((out1 / 'ensemble_run.json').read_text())
+    report = json.loads((out1 / 'ensemble_run.json').read_text(encoding='utf-8'))
     assert report['completed'] is False and report['invalid_new_responses'] == 3
     assert report['provider_attempts_this_invocation'] == 3 and report['failed_provider_attempts_this_invocation'] == 0
     paths = sorted((tmp_path / 'cache').rglob('*.json'))
@@ -757,7 +769,7 @@ def test_failed_ensemble_cli_records_invalid_counts_and_preserves_cache(tmp_path
     monkeypatch.setattr(ensemble, 'make_provider', lambda _: pytest.fail('invalid cache must stop before calls'))
     out2 = tmp_path / 'failed_resume'
     assert main(common + ['--outdir', str(out2)]) == 1
-    report2 = json.loads((out2 / 'ensemble_run.json').read_text())
+    report2 = json.loads((out2 / 'ensemble_run.json').read_text(encoding='utf-8'))
     assert report2['invalid_cached_records'] == 3 and report2['provider_attempts_this_invocation'] == 0
     assert {p: p.read_bytes() for p in paths} == before
 
@@ -775,7 +787,7 @@ def test_failed_provider_attempts_counted_and_redacted(tmp_path, monkeypatch, ca
     assert main(args) == 1
     captured = capsys.readouterr()
     assert 'sensitive-provider-secret' not in captured.out + captured.err
-    audit = json.loads((out / 'ensemble_run.json').read_text())
+    audit = json.loads((out / 'ensemble_run.json').read_text(encoding='utf-8'))
     assert audit['provider_attempts_this_invocation'] == 3
     assert audit['failed_provider_attempts_this_invocation'] == 3
     assert audit['invalid_new_responses'] == 0 and audit['failed_jobs'] == 3

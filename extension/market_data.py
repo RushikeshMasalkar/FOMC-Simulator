@@ -21,7 +21,7 @@ def load_fred(cache_dir='data/fred'):
             try:
                 with urlopen(url, timeout=30) as response:
                     payload = response.read()
-                df = pd.read_csv(io.BytesIO(payload))
+                df = pd.read_csv(io.BytesIO(payload), encoding='utf-8')
                 if len(df.columns) != 2 or df.columns[1] != series or df.empty:
                     raise ValueError(f'unexpected FRED CSV for {series}')
                 path.write_bytes(payload)
@@ -31,13 +31,13 @@ def load_fred(cache_dir='data/fred'):
                     df = web.DataReader(series, 'fred', start='1900-01-01')
                     if df.empty:
                         raise ValueError('empty result')
-                    df.to_csv(path, index_label='observation_date')
+                    df.to_csv(path, index_label='observation_date', encoding='utf-8')
                 except Exception as fallback_error:
                     raise RuntimeError(
                         f'Cannot obtain FRED {series}: CSV: {direct_error}; fallback: {fallback_error}. '
                         f'Provide data/fred/{series}.csv or enable access to FRED.'
                     ) from fallback_error
-        frame = pd.read_csv(path, na_values=['.', ''])
+        frame = pd.read_csv(path, na_values=['.', ''], encoding='utf-8')
         if series not in frame or len(frame.columns) < 2:
             raise ValueError(f'{path}: expected a date column and {series}')
         datecol = frame.columns[0]

@@ -72,7 +72,7 @@ def config(args, out):
 
 
 def read_csv(path):
-    return pd.read_csv(path, parse_dates=['Date'])
+    return pd.read_csv(path, parse_dates=['Date'], encoding='utf-8')
 
 
 def baseline(meetings, args):
@@ -103,7 +103,7 @@ def market_settings(args):
 
 
 def read_market(args, out):
-    metadata = json.loads((out / 'market_metadata.json').read_text())
+    metadata = json.loads((out / 'market_metadata.json').read_text(encoding='utf-8'))
     if metadata['settings'] != market_settings(args):
         raise ValueError('Market-stage settings or meeting file differ; use the same flags/data or rerun market in a fresh outdir')
     return read_csv(out / 'market_oos.csv')
@@ -112,23 +112,23 @@ def read_market(args, out):
 def market_stage(meetings, args, out):
     data = load_fred(args.fred_dir)
     features = build_features(meetings, data)
-    features.to_csv(out / 'market_features.csv', index=False)
+    features.to_csv(out / 'market_features.csv', index=False, encoding='utf-8')
     pred = walk_forward(features, args.min_years, args.min_meetings, args.c, args.extra_features)
-    pred.to_csv(out / 'market_oos.csv', index=False)
+    pred.to_csv(out / 'market_oos.csv', index=False, encoding='utf-8')
     from .market_data import SERIES
     metadata = {'settings': market_settings(args), 'fred_sha256': {s: file_hash(Path(args.fred_dir) / f'{s}.csv') for s in SERIES}}
-    (out / 'market_metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    (out / 'market_metadata.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
     print(f'Market OOS predictions: {len(pred)} meetings; saved {out / "market_oos.csv"}')
 
 
 def phase2(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
-    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n')
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n', encoding='utf-8')
     joined = market.merge(single, on='Date', how='inner', validate='one_to_one')
     pred, theta = walk_forward_fusion(joined, min_fusion=args.min_fusion)
     folder = out / 'phase2'; folder.mkdir(parents=True, exist_ok=True)
-    pred.to_csv(folder / 'predictions.csv', index=False)
+    pred.to_csv(folder / 'predictions.csv', index=False, encoding='utf-8')
     variants = {'Always-hold': 'always', 'Market-only logit': 'p_mkt_',
                 'Replication (single run)': 'p_comm_', 'Replication + fusion': 'p_fused_'}
     table = evaluate(pred, variants, folder, args.bootstrap, args.seed, theta, args.cutoff, 'Phase 2: single-run fusion (not the six-variant final table)')
@@ -165,17 +165,17 @@ def ensemble_stage(meetings, args, out):
         data['ensemble_provider'] = args.provider
         data['ensemble_temp'] = args.temp
         data['ensemble_policy'] = 'resolved_only_strict_majority_v1'
-        data.to_csv(out / 'ensemble.csv', index=False)
-        pd.DataFrame(votes).to_csv(out / 'ensemble_votes.csv', index=False)
-        pd.DataFrame(meetings_audit).to_csv(out / 'ensemble_meetings.csv', index=False)
-        (out / 'ensemble_run.json').write_text(json.dumps(run_audit, indent=2) + '\n')
+        data.to_csv(out / 'ensemble.csv', index=False, encoding='utf-8')
+        pd.DataFrame(votes).to_csv(out / 'ensemble_votes.csv', index=False, encoding='utf-8')
+        pd.DataFrame(meetings_audit).to_csv(out / 'ensemble_meetings.csv', index=False, encoding='utf-8')
+        (out / 'ensemble_run.json').write_text(json.dumps(run_audit, indent=2) + '\n', encoding='utf-8')
         print(f'Saved conditional probabilities and audit files in {out}. Review unresolved samples and flagged votes.')
 
 
 def final_eval(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
-    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n')
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n', encoding='utf-8')
     ensemble = read_csv(args.ensemble_csv or out / 'ensemble.csv')
     if ensemble.empty:
         raise ValueError('No meetings with a resolved ensemble sample; no evaluation possible')
@@ -215,17 +215,17 @@ def final_eval(meetings, args, out):
         keep &= ~tied
     audit_path = out / 'ensemble_meetings.csv'
     if not args.ensemble_csv and audit_path.exists():
-        audit = pd.read_csv(audit_path)
+        audit = pd.read_csv(audit_path, encoding='utf-8')
         for _, row in audit[audit.decision_status == 'no_resolved_samples'].iterrows():
             excluded.append({'Date': str(pd.Timestamp(row.Date).date()), 'variant': 'K-ensemble only',
                              'reason': 'no_resolved_samples'})
-    pd.DataFrame(excluded, columns=['Date', 'variant', 'reason']).to_csv(out / 'evaluation_exclusions.csv', index=False)
+    pd.DataFrame(excluded, columns=['Date', 'variant', 'reason']).to_csv(out / 'evaluation_exclusions.csv', index=False, encoding='utf-8')
     both = both.loc[keep].copy()
     if both.empty: raise ValueError('No common meetings with unambiguous hard decisions across every variant')
-    both.to_csv(out / 'evaluation_predictions.csv', index=False)
+    both.to_csv(out / 'evaluation_predictions.csv', index=False, encoding='utf-8')
     st['variant'] = 'single'; et['variant'] = 'ensemble'
     # Plot the full system's parameters; retain both sets of fold estimates.
-    pd.concat([st, et]).to_csv(out / 'all_fusion_theta.csv', index=False)
+    pd.concat([st, et]).to_csv(out / 'all_fusion_theta.csv', index=False, encoding='utf-8')
     table = evaluate(both, variants, out, args.bootstrap, args.seed, et, args.cutoff)
     print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string(na_rep='N/A'))
     print(f'Full intersection: {len(both)} meetings; see {out / "ablation.md"}')

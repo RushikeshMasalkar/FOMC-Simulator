@@ -77,7 +77,7 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
     assert np.isclose(metrics(y, probs['Always-hold'])['accuracy'], hold_rate)
     table, bootstrap = confidence_intervals(y, probs, n_boot, seed)
     table.index.name = 'variant'
-    table.to_csv(out / 'ablation.csv', na_rep='N/A')
+    table.to_csv(out / 'ablation.csv', na_rep='N/A', encoding='utf-8')
     lines = [f'# {title}', '', f'N = {len(y)} common meetings; hold rate = {hold_rate:.3f}.',
              f'Percentile 95% CIs from {n_boot} paired meeting bootstrap resamples, seed {seed}.',
              'Brier is the sum across three classes; ECE is top-label confidence, 10 equal-width bins.',
@@ -121,7 +121,7 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
         lines.extend([f'**{name}**  ', f'All: `{cm.tolist()}`  ',
                       f'Non-hold: `{nonhold}`  ' if nonhold is not None else 'Non-hold: N/A (no non-hold meetings)  ',
                       f'Precision (cut, hold, hike): `{show(prec)}`; recall: `{show(rec)}`.', ''])
-    (out / 'confusion_and_classes.json').write_text(json.dumps(diagnostics, indent=2))
+    (out / 'confusion_and_classes.json').write_text(json.dumps(diagnostics, indent=2), encoding='utf-8')
     lines.extend(['## Near-zero-rate calendar regimes', '',
                   'Calendar proxy: 2009–2015 and 2020–2021 (not an observation-level rate threshold).'])
     years = df.Date.dt.year
@@ -160,7 +160,7 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
     plt.savefig(figdir / 'reliability.png', dpi=150); plt.close()
     lines.extend(['', '## Figures', '', '![Reliability](figures/reliability.png)'])
     if theta is not None and not theta.empty:
-        theta.to_csv(out / 'fusion_theta.csv', index=False)
+        theta.to_csv(out / 'fusion_theta.csv', index=False, encoding='utf-8')
         if (theta.train_n < 40).any():
             lines.extend(['', '**Warning:** at least one fusion fold has fewer than 40 training meetings; coefficients and metrics are highly unstable.'])
         plt.figure(figsize=(7,4))
@@ -170,5 +170,5 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
         plt.savefig(figdir / 'fusion_theta.png', dpi=150); plt.close()
         lines.extend(['', '![Fold parameters](figures/fusion_theta.png)', '',
                       'Coefficients are joint log-linear weights, not normalized shares or causal attribution.'])
-    (out / 'ablation.md').write_text('\n'.join(lines) + '\n')
+    (out / 'ablation.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     return table
