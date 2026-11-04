@@ -102,8 +102,107 @@ def gemini_error_diagnostic(error):
             'These hints cannot prove whether Google or an intermediary generated the response.')
 
 
+def detected_https_proxy():
+    """Check Python's system/environment proxy discovery without exposing values."""
+    from urllib.request import getproxies
+    try:
+        proxies = getproxies()
+        return 'yes' if proxies.get('https') or proxies.get('all') else 'no'
+    except Exception:
+        # Registry/environment parsing errors can contain sensitive settings.
+        return 'unavailable'
+
+
+# Used only by the offline diagnostic subprocess, never by the live provider.
+_MOCK_KEY = 'offline-diagnostic-fake-key'
+_MOCK_PROMPT = 'For a connectivity test, output exactly: INTEREST RATE VOTE: 0.00%'
+_MOCK_CHECKS = ('method_post', 'expected_endpoint', 'json_content_type', 'payload_shape',
+                'api_key_header_present', 'fake_key_used', 'authorization_header_present')
+
+
+def _gemini_mock_worker():
+    """Construct an SDK request with a fake key and a socket-blocked mock transport."""
+    import socket
+    from unittest.mock import patch
+    import httpx
+    from google import genai
+    from google.genai import types
+
+    checks = {}
+    expected_url = f'{GEMINI_BASE_URL}{GEMINI_API_VERSION}/models/{GEMINI_MODEL}:generateContent'
+    expected_body = {'contents': [{'parts': [{'text': _MOCK_PROMPT}], 'role': 'user'}],
+                     'generationConfig': {'temperature': 0.7}}
+
+    def handle(request):
+        checks.update({
+            'method_post': request.method == 'POST',
+            'expected_endpoint': str(request.url) == expected_url,
+            'json_content_type': request.headers.get('content-type', '').split(';')[0].strip().lower() == 'application/json',
+            'payload_shape': json.loads(request.content) == expected_body,
+            'api_key_header_present': 'x-goog-api-key' in request.headers,
+            'fake_key_used': request.headers.get('x-goog-api-key') == _MOCK_KEY,
+            'authorization_header_present': 'authorization' in request.headers,
+        })
+        return httpx.Response(200, request=request, json={
+            'candidates': [{'content': {'role': 'model', 'parts': [{'text': 'mock response'}]},
+                            'finishReason': 'STOP'}]})
+
+    def no_socket(*args, **kwargs):
+        raise RuntimeError('network disabled for offline diagnostic')
+
+    # Inject a transport for both sync and async clients. The socket guard is
+    # defense in depth: an accidental SDK transport change must not contact a server.
+    with patch.object(socket.socket, 'connect', no_socket), \
+         patch.object(socket.socket, 'connect_ex', no_socket), \
+         patch.object(socket, 'create_connection', no_socket), \
+         httpx.Client(transport=httpx.MockTransport(handle), trust_env=False) as sync_client:
+        async_client = httpx.AsyncClient(transport=httpx.MockTransport(handle), trust_env=False)
+        client = genai.Client(api_key=_MOCK_KEY, vertexai=False, http_options=types.HttpOptions(
+            base_url=GEMINI_BASE_URL, api_version=GEMINI_API_VERSION,
+            retry_options=types.HttpRetryOptions(attempts=1),
+            httpx_client=sync_client, httpx_async_client=async_client))
+        try:
+            client.models.generate_content(model=GEMINI_MODEL, contents=_MOCK_PROMPT,
+                config=types.GenerateContentConfig(temperature=0.7))
+        finally:
+            client.close()
+    # This output is consumed by the parent and never forwarded verbatim.
+    print(json.dumps(checks))
+
+
+def offline_sdk_check():
+    """Run the mock in an isolated process, returning only allowlisted booleans."""
+    import subprocess
+    import sys
+    # Pass only basic OS/Python settings to the subprocess, not the caller's
+    # credentials or proxy settings. This does not modify the caller's environment.
+    allowed_env = {'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR',
+                   'PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV'}
+    env = {name: value for name, value in os.environ.items() if name.upper() in allowed_env}
+    backend = os.environ.get('GOOGLE_GENAI_HTTP_CLIENT', '').lower().strip()
+    if backend in ('httpx', 'httpx2', 'auto'):
+        env['GOOGLE_GENAI_HTTP_CLIENT'] = backend
+    env['GEMINI_API_KEY'] = _MOCK_KEY
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
+    try:
+        result = subprocess.run(
+            [sys.executable, '-c', 'from extension.providers import _gemini_mock_worker; _gemini_mock_worker()'],
+            env=env, capture_output=True, text=True, timeout=30, check=False)
+        if result.returncode:
+            return None
+        checks = json.loads(result.stdout)
+        if not isinstance(checks, dict) or set(checks) != set(_MOCK_CHECKS):
+            return None
+        if any(type(checks[name]) is not bool for name in _MOCK_CHECKS):
+            return None
+        return checks
+    except Exception:
+        # Child output and exception text may contain secrets; never relay them.
+        return None
+
+
 def local_gemini_diagnostics(model):
-    """Print non-secret local configuration; no HTTP requests are made."""
+    """Print non-secret local configuration; no network requests are made."""
     from importlib.metadata import version, PackageNotFoundError
     try:
         sdk = version('google-genai')
@@ -115,10 +214,23 @@ def local_gemini_diagnostics(model):
     safe_model = model if model == GEMINI_MODEL else '[other model redacted]'
     print('Local diagnostics only; no network request was made.')
     print(f'Google GenAI SDK: {sdk}; model: {safe_model}; API version: {GEMINI_API_VERSION}')
-    print(f'Configured base endpoint: {GEMINI_BASE_URL}; authentication: GEMINI_API_KEY header')
+    print(f'Configured base endpoint: {GEMINI_BASE_URL}; authentication: GEMINI_API_KEY via x-goog-api-key header')
     print(f'GEMINI_API_KEY: {key_state}; contains whitespace: {whitespace} (value not shown)')
     print(f'Proxy environment variable names: {proxy_environment()} (values not shown)')
-    print('System or network proxies may still be present even when no environment variables are detected.')
+    print(f'Python-detected HTTPS or ALL system/environment proxy: {detected_https_proxy()} (values not shown)')
+    print('Detection does not establish proxy use for this host or rule out transparent interception.')
+    checks = offline_sdk_check()
+    if checks is None:
+        print('Offline SDK mock check: unavailable (details redacted).')
+    else:
+        yn = lambda value: 'yes' if value else 'no'
+        print('Offline SDK mock check for gemini-3.1-flash-lite (fake key; httpx mock transport):')
+        print(f"  POST: {yn(checks['method_post'])}; expected endpoint: {yn(checks['expected_endpoint'])}; "
+              f"JSON content type: {yn(checks['json_content_type'])}; expected payload: {yn(checks['payload_shape'])}")
+        print(f"  API-key header present: {yn(checks['api_key_header_present'])}; "
+              f"fake key used: {yn(checks['fake_key_used'])}; "
+              f"Authorization header present: {yn(checks['authorization_header_present'])}")
+        print('This checks local SDK serialization, not the live network or account access.')
 
 
 class OpenAIProvider:

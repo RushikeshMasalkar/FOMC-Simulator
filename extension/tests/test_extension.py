@@ -394,3 +394,132 @@ def test_probe_does_not_print_raw_model_text_or_non_numeric_usage(monkeypatch, c
     output = capsys.readouterr().out
     assert 'Validated vote class: 1' in output and "'prompt_token_count': 5" in output
     assert 'secret-token-should-not-appear' not in output and 'sensitive' not in output
+
+
+@pytest.mark.parametrize('proxy_map, expected', [
+    ({}, 'no'),
+    ({'http': 'http://private:credentials@http-proxy:8000'}, 'no'),
+    ({'https': 'http://private:credentials@https-proxy:8000'}, 'yes'),
+    ({'all': 'socks5://private:credentials@all-proxy:8000'}, 'yes'),
+])
+def test_detected_system_proxy_is_boolean_only(monkeypatch, proxy_map, expected):
+    import urllib.request
+    from extension.providers import detected_https_proxy
+    monkeypatch.setattr(urllib.request, 'getproxies', lambda: proxy_map)
+    assert detected_https_proxy() == expected
+
+
+def test_system_proxy_discovery_failure_redacts_exception(monkeypatch):
+    import urllib.request
+    from extension.providers import detected_https_proxy
+    def fail():
+        raise OSError('proxy-password-in-registry')
+    monkeypatch.setattr(urllib.request, 'getproxies', fail)
+    assert detected_https_proxy() == 'unavailable'
+
+
+def test_diagnose_mock_isolated_fake_key_and_no_result_writes(tmp_path, monkeypatch, capsys):
+    import os
+    import subprocess
+    import urllib.request
+    from extension.run_all import main
+    from extension.providers import _MOCK_KEY
+    actual_key = 'sensitive-real-key-never-send-to-child'
+    other_key = 'sensitive-google-key-never-send-to-child'
+    proxy = 'http://private-user:private-password@private-proxy:8000'
+    monkeypatch.setenv('GEMINI_API_KEY', actual_key)
+    monkeypatch.setenv('GOOGLE_API_KEY', other_key)
+    monkeypatch.setenv('HTTPS_PROXY', proxy)
+    monkeypatch.setenv('SERVICE_TOKEN', 'sensitive-token')
+    monkeypatch.setattr(urllib.request, 'getproxies', lambda: {'https': proxy})
+    real_run = subprocess.run
+    observed = []
+    def run(*args, **kwargs):
+        env = kwargs['env']
+        observed.append(env)
+        assert env['GEMINI_API_KEY'] == _MOCK_KEY
+        assert 'GOOGLE_API_KEY' not in env and 'HTTPS_PROXY' not in env and 'SERVICE_TOKEN' not in env
+        assert kwargs['capture_output'] is True
+        return real_run(*args, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', run)
+    out = tmp_path / 'results'; out.mkdir()
+    backups = tmp_path / 'results_backups'; backups.mkdir()
+    (out / 'fusion.txt').write_text('keep fusion results')
+    (backups / 'backup.txt').write_text('keep backup')
+    assert main(['--stage', 'diagnose', '--provider', 'gemini', '--outdir', str(out)]) == 0
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert len(observed) == 1
+    assert 'Python-detected HTTPS or ALL system/environment proxy: yes' in output
+    assert 'POST: yes; expected endpoint: yes; JSON content type: yes; expected payload: yes' in output
+    assert 'API-key header present: yes; fake key used: yes; Authorization header present: no' in output
+    for secret in (actual_key, other_key, 'private-user', 'private-password', 'private-proxy', 'sensitive-token', _MOCK_KEY):
+        assert secret not in output
+    assert os.environ['GEMINI_API_KEY'] == actual_key and os.environ['GOOGLE_API_KEY'] == other_key
+    assert os.environ['HTTPS_PROXY'] == proxy
+    assert sorted(p.name for p in out.iterdir()) == ['fusion.txt']
+    assert (out / 'fusion.txt').read_text() == 'keep fusion results'
+    assert sorted(p.name for p in backups.iterdir()) == ['backup.txt']
+    assert (backups / 'backup.txt').read_text() == 'keep backup'
+
+
+def test_mock_worker_uses_fake_key_blocks_socket_and_does_not_print_headers(monkeypatch, capsys):
+    import socket
+    import httpx
+    from google import genai
+    from extension.providers import _gemini_mock_worker, _MOCK_KEY
+    real_client = genai.Client
+    secret = 'authorization-value-never-print'
+    def never_connect(*args, **kwargs):
+        raise AssertionError('real socket forbidden in tests')
+    monkeypatch.setattr(socket.socket, 'connect', never_connect)
+    def client(**kwargs):
+        assert kwargs['api_key'] == _MOCK_KEY
+        assert isinstance(kwargs['http_options'].httpx_client._transport, httpx.MockTransport)
+        with socket.socket() as sock:
+            with pytest.raises(RuntimeError, match='network disabled'):
+                sock.connect(('203.0.113.1', 443))
+        kwargs['http_options'].headers = {'Authorization': secret}
+        return real_client(**kwargs)
+    monkeypatch.setattr(genai, 'Client', client)
+    _gemini_mock_worker()
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    result = json.loads(captured.out)
+    assert result['fake_key_used'] and result['authorization_header_present']
+    assert result['expected_endpoint'] and result['payload_shape']
+    assert secret not in output and _MOCK_KEY not in output
+
+
+def test_diagnostic_never_relays_child_output_or_exceptions(monkeypatch, capsys):
+    import subprocess
+    from extension.providers import local_gemini_diagnostics
+    secret = 'child-secret-never-display'
+    def fail(*args, **kwargs):
+        return SimpleNamespace(returncode=1, stdout=secret, stderr=secret)
+    monkeypatch.setattr(subprocess, 'run', fail)
+    local_gemini_diagnostics('gemini-3.1-flash-lite')
+    captured = capsys.readouterr()
+    assert 'Offline SDK mock check: unavailable (details redacted)' in captured.out
+    assert secret not in captured.out + captured.err
+    def bad_json(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=secret, stderr=secret)
+    monkeypatch.setattr(subprocess, 'run', bad_json)
+    local_gemini_diagnostics('gemini-3.1-flash-lite')
+    captured = capsys.readouterr()
+    assert 'Offline SDK mock check: unavailable (details redacted)' in captured.out
+    assert secret not in captured.out + captured.err
+
+
+def test_diagnostic_rejects_untrusted_child_fields(monkeypatch, capsys):
+    import subprocess
+    from extension.providers import _MOCK_CHECKS, local_gemini_diagnostics
+    secret = 'child-field-secret-never-display'
+    checks = {name: True for name in _MOCK_CHECKS}
+    checks['expected_endpoint'] = secret
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout=json.dumps(checks), stderr=secret))
+    local_gemini_diagnostics('gemini-3.1-flash-lite')
+    captured = capsys.readouterr()
+    assert 'Offline SDK mock check: unavailable (details redacted)' in captured.out
+    assert secret not in captured.out + captured.err
