@@ -9,7 +9,7 @@ LABELS = {'CUT': 0, 'NO CHANGE': 1, 'HIKE': 2}
 
 
 def load_meetings(path='state_of_art_model/fomc_meetings.csv'):
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, encoding='utf-8')
     df['Date'] = pd.to_datetime(df['Date'], errors='raise')
     if df.Date.duplicated().any() or not set(df.Outcome).issubset(LABELS):
         raise ValueError('meeting dates must be unique and labels recognized')

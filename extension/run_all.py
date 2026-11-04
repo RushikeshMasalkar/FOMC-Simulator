@@ -4,6 +4,7 @@ import hashlib
 import importlib.metadata
 import json
 import platform
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,21 +14,25 @@ from .market_data import load_fred
 from .market_prior import load_meetings, build_features, walk_forward
 from .committee import load_baseline
 from .fusion import smooth_votes, walk_forward_fusion
-from .ensemble import run_ensemble
+from .ensemble import run_ensemble, probe, EnsembleCacheError, EnsembleRunError
+from .providers import local_gemini_diagnostics
 from .evaluate import evaluate
 
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval'], default='all')
+    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval', 'probe', 'diagnose'], default='all')
     p.add_argument('--k', type=int, default=7)
     p.add_argument('--temp', type=float, default=0.7)
     p.add_argument('--max_calls', type=int, default=0, help='Hard maximum API requests this invocation, including retries (default 0)')
-    p.add_argument('--model', default='gpt-4o-mini')
+    p.add_argument('--provider', choices=['openai', 'gemini'], default='openai')
+    p.add_argument('--model', help='Default: gpt-4o-mini for OpenAI, gemini-3.1-flash-lite for Gemini')
     p.add_argument('--dry_run', action='store_true')
     p.add_argument('--limit_meetings', type=int)
     p.add_argument('--workers', type=int, default=3)
     p.add_argument('--approve_full_batch', action='store_true', help='Only after inspecting smoke outputs')
+    p.add_argument('--flag_vote', action='append', default=[], metavar='MEETING:SAMPLE:ROLE',
+                   help='Mark a human-reported reasoning/vote inconsistency without changing its signed vote')
     p.add_argument('--min_years', type=int, default=5)
     p.add_argument('--min_meetings', type=int, default=40)
     p.add_argument('--min_fusion', type=int, default=1)
@@ -47,7 +52,7 @@ def parser():
 
 
 def config(args, out):
-    names = ('numpy', 'pandas', 'scipy', 'scikit-learn', 'matplotlib', 'pandas-datareader', 'openai')
+    names = ('numpy', 'pandas', 'scipy', 'scikit-learn', 'matplotlib', 'pandas-datareader', 'openai', 'google-genai')
     versions = {}
     for name in names:
         try: versions[name] = importlib.metadata.version(name)
@@ -55,15 +60,19 @@ def config(args, out):
     data = {'arguments': vars(args), 'python': platform.python_version(), 'versions': versions,
             'class_order': ['cut', 'hold', 'hike'], 'baseline_run': 1,
             'ensemble_method': 'three independent cached-discussion vote replays; not full CrewAI'}
+    now = datetime.now(timezone.utc)
+    data['timestamp_utc'] = now.isoformat()
     path = out / 'run_config.json'
-    history = json.loads(path.read_text()) if path.exists() else {'runs': []}
-    data['timestamp_utc'] = datetime.now(timezone.utc).isoformat()
-    history['runs'].append(data)
-    path.write_text(json.dumps(history, indent=2) + '\n')
+    if path.exists():
+        path = out / f'run_config-{now.strftime("%Y%m%dT%H%M%S%fZ")}.json'
+    # Exclusive creation protects an existing run config from being overwritten.
+    with path.open('x', encoding='utf-8') as handle:
+        json.dump({'runs': [data]}, handle, indent=2)
+        handle.write('\n')
 
 
 def read_csv(path):
-    return pd.read_csv(path, parse_dates=['Date'])
+    return pd.read_csv(path, parse_dates=['Date'], encoding='utf-8')
 
 
 def baseline(meetings, args):
@@ -76,6 +85,9 @@ def baseline(meetings, args):
         return data
     data, rejected = load_baseline(meetings, args.baseline_root)
     for item in rejected: print('Rejected baseline:', item, file=sys.stderr)
+    for item in data.attrs.get('provenance', []):
+        if item['source'].startswith('recovered'):
+            print(f"Recovered {item['meeting_id']} from verified vote tasks; see baseline_provenance.json")
     if data.empty: raise ValueError('No valid checked-in single-run committee outputs')
     return data
 
@@ -91,7 +103,7 @@ def market_settings(args):
 
 
 def read_market(args, out):
-    metadata = json.loads((out / 'market_metadata.json').read_text())
+    metadata = json.loads((out / 'market_metadata.json').read_text(encoding='utf-8'))
     if metadata['settings'] != market_settings(args):
         raise ValueError('Market-stage settings or meeting file differ; use the same flags/data or rerun market in a fresh outdir')
     return read_csv(out / 'market_oos.csv')
@@ -100,47 +112,80 @@ def read_market(args, out):
 def market_stage(meetings, args, out):
     data = load_fred(args.fred_dir)
     features = build_features(meetings, data)
-    features.to_csv(out / 'market_features.csv', index=False)
+    features.to_csv(out / 'market_features.csv', index=False, encoding='utf-8')
     pred = walk_forward(features, args.min_years, args.min_meetings, args.c, args.extra_features)
-    pred.to_csv(out / 'market_oos.csv', index=False)
+    pred.to_csv(out / 'market_oos.csv', index=False, encoding='utf-8')
     from .market_data import SERIES
     metadata = {'settings': market_settings(args), 'fred_sha256': {s: file_hash(Path(args.fred_dir) / f'{s}.csv') for s in SERIES}}
-    (out / 'market_metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    (out / 'market_metadata.json').write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
     print(f'Market OOS predictions: {len(pred)} meetings; saved {out / "market_oos.csv"}')
 
 
 def phase2(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n', encoding='utf-8')
     joined = market.merge(single, on='Date', how='inner', validate='one_to_one')
     pred, theta = walk_forward_fusion(joined, min_fusion=args.min_fusion)
     folder = out / 'phase2'; folder.mkdir(parents=True, exist_ok=True)
-    pred.to_csv(folder / 'predictions.csv', index=False)
+    pred.to_csv(folder / 'predictions.csv', index=False, encoding='utf-8')
     variants = {'Always-hold': 'always', 'Market-only logit': 'p_mkt_',
                 'Replication (single run)': 'p_comm_', 'Replication + fusion': 'p_fused_'}
     table = evaluate(pred, variants, folder, args.bootstrap, args.seed, theta, args.cutoff, 'Phase 2: single-run fusion (not the six-variant final table)')
     print(f'Phase 2: {len(pred)} meetings; table at {folder / "ablation.md"}')
-    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string())
+    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string(na_rep='N/A'))
 
 
 def ensemble_stage(meetings, args, out):
-    data = run_ensemble(meetings, args.baseline_root, args.cache_dir, args.model, args.temp,
-                        args.k, args.max_calls, args.workers, args.dry_run, args.limit_meetings, args.approve_full_batch)
+    try:
+        data = run_ensemble(meetings, args.baseline_root, args.cache_dir, args.model, args.temp,
+                            args.k, args.max_calls, args.workers, args.dry_run, args.limit_meetings,
+                            args.approve_full_batch, provider=args.provider, flag_votes=args.flag_vote)
+    except (EnsembleCacheError, EnsembleRunError) as error:
+        audit = {**error.audit, 'provider': args.provider, 'model': args.model,
+                 'temperature': args.temp, 'k': args.k}
+        with (out / 'ensemble_run.json').open('x', encoding='utf-8') as handle:
+            json.dump(audit, handle, indent=2)
+            handle.write('\n')
+        raise
     if data is not None:
+        votes = data.attrs['vote_audit']
+        meetings_audit = data.attrs['meeting_audit']
+        run_audit = data.attrs['run_audit']
+        # These cover available recorded usage, not unrecorded failed calls.
+        for source in ('existing_cache', 'new_response'):
+            group = [row for row in votes if row['source'] == source]
+            run_audit[source + '_token_usage'] = {
+                field: {'total': sum(row[field] for row in group if row[field] is not None),
+                        'records_with_usage': sum(row[field] is not None for row in group),
+                        'records': len(group)}
+                for field in ('input_tokens', 'output_tokens', 'thinking_tokens', 'total_tokens')}
         data['ensemble_k'] = args.k
         data['ensemble_model'] = args.model
+        data['ensemble_provider'] = args.provider
         data['ensemble_temp'] = args.temp
-        data.to_csv(out / 'ensemble.csv', index=False)
-        print(f'Saved {out / "ensemble.csv"}. Inspect the printed votes and cached outputs before a full run.')
+        data['ensemble_policy'] = 'resolved_only_strict_majority_v1'
+        data.to_csv(out / 'ensemble.csv', index=False, encoding='utf-8')
+        pd.DataFrame(votes).to_csv(out / 'ensemble_votes.csv', index=False, encoding='utf-8')
+        pd.DataFrame(meetings_audit).to_csv(out / 'ensemble_meetings.csv', index=False, encoding='utf-8')
+        (out / 'ensemble_run.json').write_text(json.dumps(run_audit, indent=2) + '\n', encoding='utf-8')
+        print(f'Saved conditional probabilities and audit files in {out}. Review unresolved samples and flagged votes.')
 
 
 def final_eval(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n', encoding='utf-8')
     ensemble = read_csv(args.ensemble_csv or out / 'ensemble.csv')
+    if ensemble.empty:
+        raise ValueError('No meetings with a resolved ensemble sample; no evaluation possible')
     if ensemble.Date.duplicated().any(): raise ValueError('duplicate ensemble dates')
     if not args.ensemble_csv:
-        expected = {'ensemble_k': args.k, 'ensemble_model': args.model, 'ensemble_temp': args.temp}
+        # Old outputs have no provider/policy metadata and cannot be safely attributed.
+        if 'ensemble_provider' not in ensemble or 'ensemble_policy' not in ensemble:
+            raise ValueError('Legacy ensemble lacks provider or policy metadata; use an audited --ensemble_csv or regenerate')
+        expected = {'ensemble_k': args.k, 'ensemble_model': args.model, 'ensemble_temp': args.temp,
+                    'ensemble_provider': args.provider, 'ensemble_policy': 'resolved_only_strict_majority_v1'}
         for key, value in expected.items():
             if key not in ensemble or not (ensemble[key] == value).all():
                 raise ValueError(f'Ensemble {key} differs from evaluation settings; pass matching flags or use a separate outdir')
@@ -153,24 +198,91 @@ def final_eval(meetings, args, out):
     eb = eb[['Date'] + ens_cols + ['p_fused_cut','p_fused_hold','p_fused_hike']].rename(columns={f'p_fused_{c}': f'p_efused_{c}' for c in ('cut','hold','hike')})
     both = sb.merge(eb, on='Date', how='inner', validate='one_to_one')
     if both.empty: raise ValueError('No common meetings across every evaluated variant')
-    both.to_csv(out / 'evaluation_predictions.csv', index=False)
-    st['variant'] = 'single'; et['variant'] = 'ensemble'
-    # Plot the full system's parameters; retain both sets of fold estimates.
-    pd.concat([st, et]).to_csv(out / 'all_fusion_theta.csv', index=False)
     variants = {'Always-hold':'always', 'Market-only logit':'p_mkt_',
                 'Replication (single run)':'p_comm_', 'Replication + fusion':'p_fused_',
                 'K-ensemble only':'p_ens_', 'K-ensemble + fusion':'p_efused_'}
+    # Avoid np.argmax's implicit preference for the first class on tied maxima.
+    # All six variants retain the same evaluation intersection.
+    excluded = []
+    keep = np.ones(len(both), dtype=bool)
+    for name, prefix in variants.items():
+        if prefix == 'always':
+            continue
+        probs = both[[prefix + c for c in ('cut', 'hold', 'hike')]].to_numpy(float)
+        tied = np.isclose(probs, probs.max(axis=1, keepdims=True), rtol=0, atol=1e-12).sum(axis=1) > 1
+        for date in both.loc[tied, 'Date']:
+            excluded.append({'Date': str(pd.Timestamp(date).date()), 'variant': name, 'reason': 'tied_top_probability'})
+        keep &= ~tied
+    audit_path = out / 'ensemble_meetings.csv'
+    if not args.ensemble_csv and audit_path.exists():
+        audit = pd.read_csv(audit_path, encoding='utf-8')
+        for _, row in audit[audit.decision_status == 'no_resolved_samples'].iterrows():
+            excluded.append({'Date': str(pd.Timestamp(row.Date).date()), 'variant': 'K-ensemble only',
+                             'reason': 'no_resolved_samples'})
+    pd.DataFrame(excluded, columns=['Date', 'variant', 'reason']).to_csv(out / 'evaluation_exclusions.csv', index=False, encoding='utf-8')
+    both = both.loc[keep].copy()
+    if both.empty: raise ValueError('No common meetings with unambiguous hard decisions across every variant')
+    both.to_csv(out / 'evaluation_predictions.csv', index=False, encoding='utf-8')
+    st['variant'] = 'single'; et['variant'] = 'ensemble'
+    # Plot the full system's parameters; retain both sets of fold estimates.
+    pd.concat([st, et]).to_csv(out / 'all_fusion_theta.csv', index=False, encoding='utf-8')
     table = evaluate(both, variants, out, args.bootstrap, args.seed, et, args.cutoff)
-    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string())
+    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string(na_rep='N/A'))
     print(f'Full intersection: {len(both)} meetings; see {out / "ablation.md"}')
+
+
+def protect_existing_outputs(stage, out):
+    """Stop before backups, configuration writes or API calls if outputs exist."""
+    names = {
+        'market': ('market_features.csv', 'market_oos.csv', 'market_metadata.json'),
+        'fusion': ('baseline_provenance.json', 'phase2'),
+        'ensemble': ('ensemble.csv', 'ensemble_votes.csv', 'ensemble_meetings.csv', 'ensemble_run.json'),
+        'eval': ('baseline_provenance.json', 'evaluation_predictions.csv', 'evaluation_exclusions.csv',
+                 'all_fusion_theta.csv', 'fusion_theta.csv', 'ablation.csv', 'ablation.md',
+                 'confusion_and_classes.json', 'figures/reliability.png', 'figures/fusion_theta.png'),
+    }
+    selected = names if stage == 'all' else {stage: names.get(stage, ())}
+    for paths in selected.values():
+        for name in paths:
+            if (out / name).exists():
+                raise ValueError(f'Output already exists: {out / name}; use a fresh --outdir, no files overwritten')
+
+
+def backup_results(out):
+    if not out.exists():
+        return
+    if not out.is_dir() or out.resolve() == Path.cwd().resolve():
+        raise ValueError('outdir must be a dedicated results directory, not the repository root')
+    root = out.parent / (out.name + '_backups')
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = root / stamp
+    shutil.copytree(out, backup)
+    print(f'Existing results backed up to {backup}')
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    out = Path(args.outdir); out.mkdir(parents=True, exist_ok=True)
-    config(args, out)
-    meetings = load_meetings(args.meetings)
+    if args.model is None:
+        args.model = 'gemini-3.1-flash-lite' if args.provider == 'gemini' else 'gpt-4o-mini'
+    out = Path(args.outdir)
     try:
+        if args.dry_run and args.stage not in ('ensemble',):
+            raise ValueError('--dry_run is supported with --stage ensemble only')
+        if args.stage == 'diagnose':
+            if args.provider != 'gemini':
+                raise ValueError('diagnose currently supports --provider gemini')
+            local_gemini_diagnostics(args.model)
+            return 0
+        if args.stage == 'probe':
+            probe(args.provider, args.model, args.temp, args.max_calls)
+            return 0
+        if not args.dry_run:
+            protect_existing_outputs(args.stage, out)
+            backup_results(out)
+            out.mkdir(parents=True, exist_ok=True)
+            config(args, out)
+        meetings = load_meetings(args.meetings)
         if args.stage in ('all', 'market'): market_stage(meetings, args, out)
         if args.stage in ('all', 'fusion'): phase2(meetings, args, out)
         if args.stage in ('all', 'ensemble'): ensemble_stage(meetings, args, out)

@@ -1,9 +1,24 @@
 # Multi-Agent Framework for FOMC Simulation
 
-Welcome to the Fedsight AI multi-agent simulation system, developed by the Duke University Capstone Team in collaboration with BNY Mellon. Powered by [crewAI](https://crewai.com), this framework is designed to emulate the Federal Open Market Committee (FOMC) decision-making process using large language models (LLMs). Our system enhances the prediction and interpretability of federal funds rate decisions, supporting robust risk management strategies through explainable, agent-based AI simulations.
+Welcome to the Fedsight AI multi-agent simulation system, developed by the Duke University Capstone Team in collaboration with BNY Mellon. Powered by [crewAI](https://crewai.com), this framework is designed to emulate the Federal Open Market Committee (FOMC) decision-making process using large language models (LLMs). The project explores rate-decision prediction and explanation through agent-based simulations; its reported results are research findings, not validated investment advice.
+
+## Extension results and project status
+
+The original Fedsight AI project is a CrewAI-based FOMC simulation: analyst, economist and clustered policymaker agents interpret economic information, discuss policy and produce votes and explanations. The separate **market-fusion and Gemini ensemble extension** replays three role votes from saved discussions, adds statistical market and fusion components, and records committee-level audits and execution controls. It does **not** rerun the full CrewAI deliberation for each sample.
+
+**Completed Gemini ensemble (user-reported Windows results):** `gemini-3.1-flash-lite`, 4 meetings × 7 samples × 3 roles = **84 agent votes**. The completed resume reportedly reused 68 cached responses, obtained 16 new responses, and made 19 provider attempts (including 3 failed attempts) with zero failed jobs. Of 28 committee samples, 16 had a strict majority and 12 were unresolved. These are *resolution counts, not prediction accuracy*. The user reports an offline run of **54 tests passed in 72.27 seconds**.
+
+The user also reports an exploratory manual audit of 42 responses from two meeting contexts: 27 consistent, 15 contradictory and 0 unclear (15/42 = **35.7%** apparent contradictions). This is not a general model-level estimate. The saved experiment and raw review materials were not available in the documentation sandbox; the counts are attributed to the user and need artifact-level verification. No new experiment was run for this documentation.
+
+The original project reports **93.75%** Fedsight + Chain of Draft accuracy on its 16-meeting 2023–2024 evaluation. The four-meeting extension is not a comparable accuracy evaluation, and no superiority claim is made. For the full breakdown, original benchmarks, methodology, provenance and limitations, see **[Extension results and comparison](docs/EXTENSION_RESULTS.md)**. For setup, safeguards and outputs, see **[Extension guide](EXTENSION_README.md)**.
+
+> The original project description and results below are retained as the original authors' reported claims; they are separate from this extension and are not independently validated by the extension.
+
+**Future work / TODO:** preserve the raw files and original audit, record the 42 manual classifications separately, develop a validated semantic consistency check, and evaluate more matched meetings and samples. The [full checklist](docs/EXTENSION_RESULTS.md#future-work--todo--not-implemented) includes the bias and budget considerations.
 
 ## Table of Contents
 
+* [Extension Results and Project Status](#extension-results-and-project-status)
 * [Summary](#summary)
 * [Motivation & Goals](#motivation--goals)
 * [High-Level Overview](#high-level-overview)
@@ -16,7 +31,7 @@ Welcome to the Fedsight AI multi-agent simulation system, developed by the Duke 
 
 ## Summary
 
-This project simulates the FOMC using a multi-agent system comprised of LLM-powered agents that reflect diverse FOMC personas. By combining structured (e.g., inflation rates, treasury yields, political variables) and unstructured (e.g., Beige Book summaries, dot plots, rate probability expectations) data inputs, each agent independently processes information, deliberates in a group discussion, and votes. This end-to-end deliberation process mirrors the real-world FOMC and provides high-fidelity insights into monetary policy decisions.
+This project simulates the FOMC using a multi-agent system comprised of LLM-powered agents that reflect diverse FOMC personas. By combining structured (e.g., inflation rates, treasury yields, political variables) and unstructured (e.g., Beige Book summaries, dot plots, rate probability expectations) data inputs, each agent independently processes information, deliberates in a group discussion, and votes. This end-to-end deliberation is intended to model aspects of FOMC decision-making and provide inspectable simulated reasoning; it is not a substitute for the actual committee.
 
 ## Motivation & Goals
 
@@ -146,7 +161,7 @@ To ensure realistic yet efficient simulation:
 
 **In-Context Learning** stores previous agent votes, rationales, and reflections, improving memory retention and decision consistency.
 
-**Chain of Draft** minimizes token usage and improves clarity by constraining reasoning to \~30-word steps. It reduces verbosity without compromising deliberative quality.
+**Chain of Draft** constrains reasoning to \~30-word steps. The original project reports lower token usage and evaluates resulting outputs; concise text alone does not establish deliberative quality.
 
 ## Investigations & Results
 
@@ -222,25 +237,17 @@ Evaluated over 16 meetings (2023–2024), with 5 runs per meeting.
 ![Comparison](https://github.com/user-attachments/assets/44846e28-6706-4e7d-bbcc-a789233da9bf)
 
 
-These results show that our framework not only predicts more accurately but also offers richer interpretability and stronger alignment with actual FOMC communications. Specifically:
+The original project interprets these as encouraging results for its evaluated settings. The comparisons above are the authors' reported figures, not an independent replication; different datasets and evaluation definitions limit direct comparisons. The results do not by themselves establish statistical significance or generalization to other periods.
 
-* **Accuracy:** The Chain of Draft (CoD) model significantly outperformed both academic benchmarks and traditional machine learning baselines, demonstrating its ability to generalize across macroeconomic cycles and decision contexts.
-* **Interpretability:** Unlike black-box models, each agent produces transparent, structured explanations rooted in both quantitative indicators and narrative sources like the Beige Book.
-* **Stability:** Consistent predictions across repeated runs indicate that our simulation is not heavily influenced by LLM randomness—critical for building user trust.
-* **Faithfulness to FOMC Rationale:** Reasoning similarity scores show that our system's justifications align semantically with actual statements, revealing a deep understanding of FOMC communication style and themes.
-* **Efficiency:** By reducing token usage through Chain of Draft prompting, we not only cut computational cost but also streamline model outputs for integration into downstream tools (e.g., dashboards, summaries).
+* **Accuracy:** The reported CoD metrics describe the original test sets, not the extension's four-meeting ensemble.
+* **Interpretability:** Generated explanations can be inspected, but plausibility does not guarantee factuality or consistency with a final vote.
+* **Stability:** Repeated-run agreement is a descriptive measure and does not establish robustness in other contexts.
+* **Reasoning similarity:** Text similarity to actual communications does not prove that the underlying reasoning is faithful or causally correct.
+* **Efficiency:** The original project reports reduced token usage with CoD for its evaluation; actual cost depends on the provider, model, usage and retries.
 
 ## Connecting Back to Goals
 
-Our goal was to move beyond static, opaque prediction systems toward a transparent, modular simulation of FOMC decision-making. The results confirm that Fedsight AI achieves this across multiple dimensions:
-
-* **Predictive Power:** Achieves state-of-the-art accuracy on current and historical test sets, outperforming traditional models used in industry and academia.
-* **Interpretability:** Every agent decision includes a rationale that can be audited, traced back to inputs, and compared with FOMC communications—key for internal validation.
-* **Stability & Reliability:** High voting stability ensures that results are repeatable and dependable.
-* **Integration Potential:** The model is built for easy incorporation into platforms like BNY’s Eliza, allowing analysts to test custom scenarios, add proprietary data, or generate explainable FOMC-style reports.
-* **Scalability:** Thanks to its modularity and token-efficient design, Fedsight AI can be extended to other central bank settings or adapted for real-time forecasting.
-
-Ultimately, our team helps provide a balance of the following: **accuracy meets interpretability**, and **simulation enables foresight**.
+The original project aimed to investigate interpretable simulation as a complement to statistical forecasting. Its results are reported above; a broader, independently replicated evaluation would be needed to establish generalization, reliability and practical usefulness. The extension contributes controlled Gemini vote sampling and additional audits, rather than a claim of improved accuracy.
 
 ## Demo
 We provide a demo in [`/demo](./demo)

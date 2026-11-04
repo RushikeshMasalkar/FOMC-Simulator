@@ -69,3 +69,4 @@ retry_*.txt
 # Extension: downloaded market data and potentially sensitive LLM outputs
 /data/fred/
 /cache/ensemble/
+/results_backups/
