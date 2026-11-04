@@ -470,6 +470,10 @@ def test_mock_worker_uses_fake_key_blocks_socket_and_does_not_print_headers(monk
     from extension.providers import _gemini_mock_worker, _MOCK_KEY
     real_client = genai.Client
     secret = 'authorization-value-never-print'
+    # Even when the suite runs on a user's machine, this in-process worker test
+    # must not let the SDK read their actual key from the environment.
+    monkeypatch.setenv('GEMINI_API_KEY', _MOCK_KEY)
+    monkeypatch.delenv('GOOGLE_API_KEY', raising=False)
     def never_connect(*args, **kwargs):
         raise AssertionError('real socket forbidden in tests')
     monkeypatch.setattr(socket.socket, 'connect', never_connect)
