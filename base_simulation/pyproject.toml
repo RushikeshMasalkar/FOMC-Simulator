@@ -1,0 +1,23 @@
+[project]
+name = "bny_project"
+version = "0.1.0"
+description = "bny_project using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "crewai[tools]>=0.100.1,<1.0.0"
+]
+
+[project.scripts]
+bny_project = "bny_project.main:run"
+run_crew = "bny_project.main:run"
+train = "bny_project.main:train"
+replay = "bny_project.main:replay"
+test = "bny_project.main:test"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"

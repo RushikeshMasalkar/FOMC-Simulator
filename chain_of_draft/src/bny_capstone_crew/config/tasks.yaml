@@ -1,0 +1,39 @@
+summary_final:
+  description: >
+    Take the output from vote_1 and condense it to a JSON file summary
+    without "```json" or "```".
+
+    The JSON file should contain:
+    1. Exact historical dates referenced, expressed as explicit year ranges.
+    2. Exact metrics mentioned.
+    3. A list of every member's rate vote, expressed as percentage change
+       in rate. A vote to maintain is 0.00%.
+    4. A list of every member's rate prediction for 2025.
+
+    Do not leave out any of the three voting members.
+
+  expected_output: >
+    A valid JSON object in the following format:
+    {
+      "exact_historical_dates_referenced": [
+        "year1-year2",
+        "year3-year4"
+      ],
+      "exact_metrics_mentioned": [
+        "Metric 1",
+        "Metric 2"
+      ],
+      "rate_votes": [
+        {"member": "member_name1", "vote": "#.##%"},
+        {"member": "member_name2", "vote": "#.##%"},
+        {"member": "member_name3", "vote": "#.##%"}
+      ],
+      "rate_predictions": [
+        {"member": "member_name1", "prediction": "#.##%"},
+        {"member": "member_name2", "prediction": "#.##%"},
+        {"member": "member_name3", "prediction": "#.##%"}
+      ]
+    }
+
+  agent: analyst
+  output_file: results/{meeting_code}_run{run_number}/rate_summary.json

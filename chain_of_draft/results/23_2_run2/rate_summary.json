@@ -1,0 +1,8 @@
+{
+    "fomc_public_statement": "The Federal Open Market Committee (FOMC) decided today to lower the target range for the federal funds rate by 25 basis points, bringing it to a new range of 4.50% to 4.75%. This decision reflects the Committee’s commitment to achieving its dual mandate of maximum employment and price stability. Recent economic indicators suggest that the economy has continued to expand at a solid pace, though labor market conditions have shown signs of cooling. Inflation has made further progress toward the Committee’s 2 percent objective, though certain components remain sticky. In assessing the appropriate path for policy, the Committee drew upon historical precedents, including the measured adjustments of 1990 and 1995, to ensure a deliberate and data-dependent transition. The Committee explicitly rejected more aggressive easing to avoid misconstruing the signal or de-anchoring inflation expectations. Looking ahead, the median expectation among committee members for the target range by the end of 2025 is 3.00% to 3.25%. The Committee will continue to evaluate incoming data and remains prepared to adjust its policy trajectory to ensure that inflation is sustainably on a path to 2 percent.",
+    "rate_votes": [
+        {"member": "Regional Pragmatist", "vote": "-0.25%"},
+        {"member": "Academic Balancer", "vote": "-0.25%"},
+        {"member": "Central Policymaker", "vote": "-0.25%"}
+    ]
+}

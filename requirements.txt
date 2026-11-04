@@ -1,0 +1,16 @@
+matplotlib
+numpy
+pandas
+scikit-learn
+mlflow
+python-dotenv
+pmdarima
+statsmodels
+langchain
+langchain_core
+langchain_experimental
+streamlit
+pathlib
+fpdf
+bs4
+sentence_transformers

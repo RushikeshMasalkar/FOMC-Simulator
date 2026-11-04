@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+/rate_summary.json
+/rate_summary_1.json
+/fomc_simulation.md
+/fomc_simulation_1.md
+*.log
+node_modules/
+.next/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover 
+
+.DS_Store
+**/.DS_Store
+
+
+# Local environment
+.venv/
+
+# Temporary experiment files
+retry_*.txt
+
+# Backup files
+*_backup.py
+*backup*.py
