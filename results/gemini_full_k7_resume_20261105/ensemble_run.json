@@ -1,0 +1,63 @@
+{
+  "completed": true,
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "temperature": 0.7,
+  "k": 7,
+  "planned_role_votes": 84,
+  "reused_cache_records": 68,
+  "invalid_cached_records": 0,
+  "new_responses": 16,
+  "invalid_new_responses": 0,
+  "failed_jobs": 0,
+  "provider_attempts_this_invocation": 19,
+  "provider_responses_this_invocation": 16,
+  "failed_provider_attempts_this_invocation": 3,
+  "prior_provider_attempts_and_failures": "unknown",
+  "policy": "strict majority per sample; exclude unresolved samples from conditional probabilities",
+  "warning": "Resolved-only probabilities are conditional and may have selection bias; reasoning consistency requires human review.",
+  "existing_cache_token_usage": {
+    "input_tokens": {
+      "total": 122150,
+      "records_with_usage": 68,
+      "records": 68
+    },
+    "output_tokens": {
+      "total": 8538,
+      "records_with_usage": 68,
+      "records": 68
+    },
+    "thinking_tokens": {
+      "total": 0,
+      "records_with_usage": 0,
+      "records": 68
+    },
+    "total_tokens": {
+      "total": 130688,
+      "records_with_usage": 68,
+      "records": 68
+    }
+  },
+  "new_response_token_usage": {
+    "input_tokens": {
+      "total": 28203,
+      "records_with_usage": 16,
+      "records": 16
+    },
+    "output_tokens": {
+      "total": 2308,
+      "records_with_usage": 16,
+      "records": 16
+    },
+    "thinking_tokens": {
+      "total": 0,
+      "records_with_usage": 0,
+      "records": 16
+    },
+    "total_tokens": {
+      "total": 30511,
+      "records_with_usage": 16,
+      "records": 16
+    }
+  }
+}

@@ -1,0 +1,299 @@
+﻿"Meeting","Sample","Role","FinalVote","FinalDirection","ReasoningDirection","Consistency","PromptHash","Explanation"
+"23_2","0","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We favor a 0.25% cut to manage dual-mandate risks. This ""mid-cycle adjustment"" mirrors the 1995 approach, providing a necessary safety valve for the labor market without triggering inflationary expectations.
+
+Step 2: We reject 0.50% cuts to avoid panic and 0.00% holds to prevent overtightening. Data confirms labor cooling, requiring preemptive calibration to ensure a soft landing while maintaining inflation anchors.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","0","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","**Chain of Draft:**
+
+1. We prioritize price stability over premature easing to avoid 1970s-style inflation volatility. Current data shows PCE remains above target, necessitating a cautious, restrictive stance to ensure long-term anchoring.
+
+2. A 0.00% hold avoids the credibility risks of 0.50% cuts while rejecting the 0.25% pivot. We prioritize definitive evidence of cooling inflation over market-driven expectations for rapid normalization.
+
+3. We acknowledge regional labor cooling but maintain that 4.5% unemployment is not yet a catalyst. We remain data-dependent, favoring a higher terminal rate of 3.25%–3.50% to prevent re-acceleration.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","0","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","Chain of Draft:
+
+1. A 0.25% cut calibrates policy, acknowledging regional cooling while avoiding 1970s-style volatility. We prioritize a soft landing, mirroring the measured 1995 mid-cycle adjustment to ensure sustainable long-term economic stability.
+
+2. While inflation remains a concern, the 4.5% unemployment threshold warns against overtightening. A 0.25% cut provides necessary relief to regional credit markets without signaling panic or de-anchoring inflation expectations.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","1","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We favor a 0.25% cut to facilitate a ""soft landing,"" mirroring the 1995 mid-cycle adjustment. This prevents overtightening while ensuring core PCE remains anchored toward our 2% mandate.
+
+Step 2: We reject 0.50% cuts to avoid market panic and 0.00% holds to prevent labor market contraction. A 0.25% reduction provides necessary relief without risking a 1970s-style policy error.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","1","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","**Chain of Draft:**
+
+1. **Step 1:** We prioritize price stability. A 0.25% cut risks repeating 1970s inflation resurgence. We maintain rates to ensure core PCE converges to 2% and avoid premature policy easing.
+
+2. **Step 2:** Historical cycles like 1994 demonstrate the necessity of restrictive policy. We reject 0.50% cuts as panic-driven and maintain the current rate to anchor expectations against sticky inflation.
+
+3. **Step 3:** While regional labor cooling is noted, we require definitive evidence before pivoting. We remain data-dependent, favoring a terminal 3.25%–3.50% range to ensure long-term, sustainable economic stability.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","1","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","Step 1: We favor a 0.25% cut, mirroring the 1995 mid-cycle adjustment to support cooling labor markets while preventing the 1970s stop-start errors.
+
+Step 2: While Central Policymakers prioritize price stability, regional data shows localized credit tightening. A calibrated reduction ensures a soft landing without de-anchoring inflation expectations.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","2","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We favor a 0.25% cut, mirroring the 1995 mid-cycle adjustment to ensure a soft landing while preventing the stop-start volatility errors observed during the 1970s.
+
+Step 2: Inflation is converging toward 2% and labor markets are cooling. A 0.25% reduction provides necessary relief without signaling panic or de-anchoring long-term inflation expectations.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","2","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","Chain of Draft:
+
+1. Acknowledging consensus for caution, we prioritize price stability. Inflation remains sticky; premature easing risks repeating 1970s volatility. We maintain rates to anchor expectations firmly at the 2% target.
+
+2. We reject a 0.50% cut, avoiding panic. While a 0.25% cut is proposed by some, we favor holding to ensure core PCE convergence, mirroring the 1994 tightening cycle’s discipline.
+
+3. Reservations: Labor markets are cooling, but wage-price risks persist. We shift to data-dependency, prepared to adjust if economic deterioration becomes systemic. Price stability remains the bedrock of sustainable growth.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","2","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","**Chain of Draft:**
+
+1. We authorize a 0.25% cut, mirroring the 1995 mid-cycle adjustment to support labor markets while preventing the stop-start policy volatility that plagued the 1970s.
+
+2. Regional data shows localized cooling, necessitating this calibrated shift. We remain data-dependent, balancing the 4.5% unemployment threshold against the imperative of anchored inflation expectations.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","3","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We recommend a 0.25% cut to facilitate a soft landing, mirroring the 1995 mid-cycle adjustment to mitigate labor market cooling while maintaining necessary policy restrictiveness to anchor inflation.
+
+Step 2: We reject 0.50% cuts to avoid signaling panic and 0.00% holds to prevent unnecessary contraction, prioritizing data-dependency and the 4.5% unemployment threshold to ensure long-term price stability.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","3","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","Chain of Draft:
+
+Step 1: We prioritize price stability, avoiding 1970s policy errors. A hold maintains credibility while inflation remains above target, mirroring the 1994 tightening cycle’s focus on anchoring expectations.
+
+Step 2: We acknowledge regional labor cooling but favor data-dependence. Maintaining rates prevents premature easing until PCE convergence is certain, balancing the dual mandate against stickier-than-expected inflationary pressures.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","3","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","**Chain of Draft:**
+
+1. We vote for a 0.25% cut, mirroring the 1995 mid-cycle adjustment to support labor markets while anchoring inflation.
+2. We reject 0.50% cuts to avoid signaling panic, balancing regional cooling trends against the 2% PCE mandate.
+3. Our decision reflects a data-dependent, pragmatic approach to normalization, moving toward a 3.00%–3.25% terminal range by 2025.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","4","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We favor a 0.25% cut to provide a ""mid-cycle adjustment,"" mirroring 1995. This balances labor market cooling against inflation risks without signaling panic or abandoning our 2% mandate.
+
+Step 2: Historical precedents like 1990 suggest measured easing prevents recession. We avoid the 0.00% stance to mitigate overtightening risks, while rejecting 0.50% to maintain inflation credibility and avoid de-anchoring expectations.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","4","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","Chain of Draft:
+
+1. Analyze mandates: Inflation remains sticky; prioritize price stability over premature easing. Avoid 1970s policy errors.
+
+2. Evaluate indicators: Labor market shows resilience; 0.25% cut risks de-anchoring expectations without systemic crisis evidence.
+
+3. Final Decision: Maintain current rates to ensure inflation convergence toward 2%.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","4","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","**Step 1: Synthesis**
+We favor a 0.25% cut, mirroring the 1995 mid-cycle adjustment. This balances cooling regional labor markets and small-business credit constraints with our commitment to anchoring long-term inflation expectations.
+
+**Step 2: Justification**
+Avoiding the 0.50% cut prevents market panic, while moving from a ""hold"" position addresses emerging economic softening. This data-dependent calibration supports a sustainable soft landing without risking 1970s-style volatility.
+
+**Step 3: Reservations**
+We remain cautious of premature easing should inflation prove sticky. We will closely monitor PCE trajectory and unemployment thresholds to ensure our normalization path does not undermine price stability.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","5","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We favor a 0.25% cut, mirroring the 1995 mid-cycle adjustment to ensure a soft landing while addressing labor market cooling without de-anchoring inflation expectations.
+
+Step 2: Historical data from 1990 supports this calibrated pivot. We prioritize price stability while acknowledging that rates above 3.25% risk unnecessary contraction given current PCE trends.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","5","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","Chain of Draft:
+
+1. Prioritizing price stability, we reject premature easing to avoid 1970s-style inflation volatility. Current data warrants a cautious, restrictive stance rather than a pivot.
+
+2. We observe labor market cooling but prioritize core PCE convergence. Maintaining rates ensures inflation remains anchored, preventing the risks associated with early, reactive policy shifts.
+
+3. We favor a ""higher for longer"" trajectory, targeting 3.25%–3.50% by 2025. This supports long-term growth while safeguarding our inflation mandate against sticky, persistent price pressures.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","5","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","Chain of Draft:
+
+1. A 0.25% cut calibrates policy, mimicking the 1995 ""soft landing"" and 1990 pivot. It addresses regional labor cooling without signaling panic or risking inflation re-acceleration.
+
+2. While inflation requires vigilance, the committee’s 2025 dot plot consensus supports gradual normalization. A 0.25% reduction balances price stability with necessary support for regional economic resilience.
+
+INTEREST RATE VOTE: +0.25%"
+"23_2","6","academic","-0.25%","CUT","TO_REVIEW","TO_REVIEW","781b071a1433448ebf01b1026216750a70064c42ee7969ba13b4bc089ef02c9d","Step 1: We recommend a 0.25% cut to facilitate a soft landing. This mid-cycle adjustment mirrors 1995, preventing unnecessary contraction while maintaining a restrictive stance to anchor inflation expectations.
+
+Step 2: We reject a 0.50% cut to avoid signaling panic and maintain credibility. We prioritize labor market resilience, noting that 4.5% unemployment validates this measured, data-dependent, and prudent calibration.
+
+INTEREST RATE VOTE: -0.25%"
+"23_2","6","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","9e2fd7916008b1d2f3dc0b9d615c5376a9e299698f4c27e8ba046059434c95a3","**Chain of Draft:**
+
+1. We prioritize price stability, viewing current inflation as sticky. Maintaining rates avoids the 1970s ""stop-start"" policy errors and prevents premature easing that could de-anchor expectations before the 2% target.
+
+2. We acknowledge labor market cooling but prioritize inflation control. Historical benchmarks like 1994 suggest patience is vital. We remain data-dependent, awaiting clearer evidence before initiating a normalization cycle.
+
+INTEREST RATE VOTE: 0.00%"
+"23_2","6","regional","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","2edca605d2b5b03ac32cc0209feb98b5b830ce48464ea681c4372bb4d067daf7","**Chain of Draft:**
+
+1. We support a 0.25% cut, mirroring the 1995 mid-cycle adjustment to address localized labor cooling while avoiding the panic associated with larger, 0.50% emergency-style reductions.
+
+2. A 0.25% reduction provides essential support for small businesses and regional credit stability, preventing an unnecessary recession while remaining vigilant against the inflationary risks of the 1970s.
+
+3. We acknowledge the committee’s consensus toward a 3.00%–3.25% terminal rate, viewing a measured calibration as the most pragmatic path to ensure a stable, long-term economic landing.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","0","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We acknowledge persistent inflation but recognize significant policy transmission lags. Adopting the 1990 model, a 0.25% cut prevents excessive real rate tightening while avoiding reactive, panic-driven policy shifts.
+
+Step 2: While regional labor markets show cooling, we reject a 0.50% cut. A 0.25% adjustment provides necessary insurance against over-tightening without undermining our commitment to the 2% price stability target.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","0","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","Chain of Draft:
+
+1. Acknowledge the risks of 1970s stop-start errors. Inflation remains above our 2% mandate, necessitating a firm, restrictive stance to ensure long-term price stability.
+
+2. Diverge from the 0.25% cut; current wage pressure and persistent core PCE data do not yet justify easing. We prioritize credibility over premature, reactive adjustments.
+
+3. Final decision: Maintain rates to allow policy lags to fully dampen demand, avoiding the 1990-1991 mistake of easing before inflation is decisively defeated.
+
+INTEREST RATE VOTE: 0.00%"
+"23_5","0","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We vote for a 0.25% cut, viewing it as a proactive insurance measure against over-tightening. It mirrors the 1990 model, balancing sticky inflation with emerging regional contraction signals.
+
+2. While we acknowledge the Central Policymakers' 1970s concerns, we believe the current policy transmission is already impacting small-business credit. A surgical 0.25% adjustment prevents unnecessary labor market deterioration.
+
+3. We maintain our 2% inflation commitment, but argue that ""higher for longer"" must yield to data-dependent normalization, ensuring a soft landing rather than a policy-induced recession.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","1","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We prioritize preventing over-tightening while ensuring inflation remains anchored. The 1990-1991 model justifies a 0.25% ""insurance"" cut to address slowing growth without repeating 1970s policy-induced volatility.
+
+Step 2: Real interest rates are rising as inflation falls. A 0.25% reduction recalibrates policy to avoid unnecessary labor market deterioration while maintaining the necessary restrictive stance for price stability.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","1","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. **Step 1:** Acknowledge the risks of 1970s stop-start errors and the current stickiness of core PCE inflation, which necessitates maintaining a restrictive stance to secure the 2% target.
+
+2. **Step 2:** Evaluate the Regional Pragmatists' concerns regarding cooling sectors; however, conclude that current national labor market resilience outweighs localized contractions, rendering immediate cuts premature and potentially inflationary.
+
+3. **Step 3:** Adopt a ""wait-and-see"" approach to ensure policy lags do not undermine credibility, prioritizing long-term price stability over short-term adjustments to avoid the policy whipsaw of previous cycles.
+
+INTEREST RATE VOTE: 0.00%"
+"23_5","1","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We vote for a 0.25% cut, viewing current rates as overly restrictive. This ""calibrated recalibration"" mirrors 1990, mitigating localized credit crunches while avoiding 1970s-style stop-start policy errors.
+
+2. Regional data shows manufacturing and construction cooling. A proactive 0.25% insurance cut prevents recessionary risks without signaling panic, balancing our 2% inflation mandate against emerging labor market fragilities.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","2","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We acknowledge persistent inflation but favor a 0.25% ""insurance"" cut, mirroring the 1990 model to prevent over-tightening while ensuring long-term price stability as real interest rates rise passively.
+
+Step 2: We reject a 0.50% cut to avoid signaling panic and reject holding rates, as current transmission lags threaten labor market stability despite regional wage pressures remaining somewhat elevated.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","2","central","-0.25%","CUT","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. Acknowledge the consensus for long-term normalization toward 3.00%–3.25% by 2025.
+2. Weigh the Regional Pragmatists' concerns regarding cooling labor markets against the Central Policymakers' fear of 1970s-style inflation.
+3. Adopt the 1990-1991 historical model of calibrated, incremental adjustment to address slowing growth without signaling panic.
+4. Conclude that a 0.25% ""insurance"" cut prevents over-tightening while maintaining necessary restrictive pressure.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","2","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We recognize regional manufacturing weakness and credit tightening. A 0.25% cut acts as proactive insurance, mirroring 1990, to prevent over-tightening while maintaining our 2% inflation target commitment.
+
+2. Historical precedent from 1990 supports incremental adjustment over the 1970s ""stop-start"" errors. We prioritize data-dependency, prepared to pause if core PCE inflation metrics show unexpected, sustained upward pressure.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","3","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We acknowledge persistent inflation but recognize the 1990-1991 model for balancing sticky prices with slowing growth. A 0.25% cut prevents passive, excessive tightening as inflation trends downward.
+
+Step 2: While Central Policymakers fear 1970s-style errors, current data suggests a soft landing is achievable. A 0.25% reduction acts as a prudent, non-panic adjustment to sustain labor market stability.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","3","central","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. Acknowledge the consensus for a 0.25% cut to prevent over-tightening. 1990 historical precedents justify this ""insurance"" move against current localized labor market contraction.
+
+2. Maintain strict vigilance on PCE data to avoid 1970s ""stop-start"" errors. Inflation remains the primary mandate, but current restrictive levels risk unnecessary economic damage.
+
+3. Finalize the decision as a calibrated adjustment rather than a pivot, balancing price stability with emerging regional soft spots while targeting a 3.00%–3.25% neutral rate by 2025.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","3","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. Regional data shows localized labor contraction and credit tightening. We must avoid 1970s stop-start errors while preventing policy-induced recession, balancing inflation risks against cooling regional indicators.
+
+2. A 0.25% cut acts as a ""calibrated recalibration,"" similar to the October 1990 strategy. It is proactive insurance against over-tightening without signaling the panic associated with larger cuts.
+
+3. We prioritize price stability but acknowledge that real interest rates rise as inflation falls. A 0.25% adjustment maintains restrictive pressure while addressing signs of economic fragility.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","4","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We acknowledge inflation risks but favor a 0.25% cut. Historical 1990 precedents justify fine-tuning to prevent passive over-tightening while ensuring the labor market avoids a recessionary, localized credit crunch.
+
+Step 2: We reject a 0.50% cut as reactive and a pause as overly restrictive. A 0.25% adjustment maintains credibility while aligning real interest rates with cooling, yet still-sticky, economic data.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","4","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. We analyze persistent core PCE and wage pressures, prioritizing price stability to avoid 1970s-style inflation volatility.
+2. We reject immediate cuts, preferring the 1994 ""wait-and-see"" approach to ensure inflation reaches the 2% target.
+3. A hold maintains credibility while monitoring regional labor cooling, balancing restrictive necessity against potential over-tightening risks.
+
+INTEREST RATE VOTE: 0.00%"
+"23_5","4","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We recognize regional manufacturing cooling and tightening credit conditions. A 0.25% ""insurance"" cut prevents over-tightening while avoiding the 1970s stop-start errors by remaining data-dependent and cautious.
+
+2. Drawing on the October 1990 precedent, we recalibrate to address slowing growth. This non-panic move balances price stability with the necessity of preventing unnecessary labor market deterioration.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","5","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","**Step 1: Evaluation**
+We adopt a 0.25% cut, prioritizing the 1990-1991 ""soft landing"" model. This balances persistent inflation against emerging regional labor market cooling and prevents passive over-tightening as inflation trends lower.
+
+**Step 2: Conclusion**
+We reject a hold, as it ignores transmission lags, and reject 0.50%, which risks signaling panic. 0.25% provides necessary calibration to ensure long-term stability without triggering a recessionary spiral.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","5","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. We acknowledge the Regional Pragmatists' concerns regarding cooling labor markets but prioritize avoiding the 1970s stop-start inflation errors. Price stability remains our primary mandate over short-term market volatility.
+
+2. While historical precedents like the 1990-1991 rate cuts are noted, current wage pressures and sticky core PCE data suggest that maintaining the current restrictive stance is more prudent today.
+
+3. We vote to hold rates steady to ensure inflation reaches our 2% target, while remaining data-dependent for future adjustments as we move toward the 3.00%–3.25% range by 2025.
+
+INTEREST RATE VOTE: 0.00%"
+"23_5","5","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We vote for a 0.25% cut, viewing current rates as overly restrictive. This ""insurance"" adjustment mirrors the 1990 model to address regional cooling while avoiding 1970s policy errors.
+
+2. Regional data shows manufacturing contraction, balancing the Central Policymakers' inflation concerns. A 0.25% move provides necessary flexibility without signaling panic or abandoning our 2% mandate.
+
+INTEREST RATE VOTE: -0.25%"
+"23_5","6","academic","+0.25%","HIKE","TO_REVIEW","TO_REVIEW","1ed69ff5eb88df664d09beb8a48c811463cacc4078c8bcf07fbc0e2aca3bbcdc","Step 1: We acknowledge persistent inflation but favor a 0.25% ""insurance"" cut, mirroring the 1990 transition to prevent over-tightening while ensuring the real interest rate does not rise passively.
+
+Step 2: We reject a hold as too restrictive and 0.50% as reckless. A 0.25% adjustment provides calibrated normalization, addressing labor market cooling without risking a 1970s-style inflation resurgence.
+
+INTEREST RATE VOTE: +0.25%"
+"23_5","6","central","0.00%","HOLD","TO_REVIEW","TO_REVIEW","c92374cf2edcfb64ca3600fbe19edc97368dc170c5fb00230373f496e3d733e3","**Chain of Draft:**
+
+1. We acknowledge regional cooling but prioritize price stability. Avoiding 1970s ""stop-start"" errors remains paramount; core PCE inflation remains too high for an immediate pivot or rate reduction.
+
+2. Historical comparisons to 1994 suggest patience. Maintaining current rates prevents premature easing, ensuring inflation expectations remain anchored while we monitor labor market resilience and data-dependent indicators for clear trends.
+
+3. We vote to maintain, balancing the need for restrictive policy against potential long-term risks. We remain committed to the 2% target, awaiting conclusive evidence of a sustained disinflationary path.
+
+INTEREST RATE VOTE: 0.00%"
+"23_5","6","regional","-0.25%","CUT","TO_REVIEW","TO_REVIEW","cc23504ba26056a8266b7325d0d00c000501604983298861180fd899988205d6","**Chain of Draft:**
+
+1. We vote for a 0.25% cut, viewing current rates as overly restrictive given localized manufacturing and construction contractions observed in our regional surveys.
+
+2. Drawing from the October 1990 model, this ""insurance"" cut prevents over-tightening while maintaining pressure on inflation. We prioritize avoiding a policy-induced recession over aggressive hawkishness.
+
+3. We acknowledge the 1994 tightening lessons but believe the risk of a credit crunch outweighs immediate inflation fears. We remain data-dependent, ready to pause if PCE spikes.
+
+INTEREST RATE VOTE: -0.25%"

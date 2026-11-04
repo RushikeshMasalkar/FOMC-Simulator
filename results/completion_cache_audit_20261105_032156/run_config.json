@@ -1,0 +1,55 @@
+{
+  "runs": [
+    {
+      "arguments": {
+        "stage": "ensemble",
+        "k": 1,
+        "temp": 0.7,
+        "max_calls": 0,
+        "provider": "gemini",
+        "model": "gemini-3.1-flash-lite",
+        "dry_run": false,
+        "limit_meetings": 1,
+        "workers": 1,
+        "approve_full_batch": false,
+        "flag_vote": [
+          "23_2:0:regional"
+        ],
+        "min_years": 5,
+        "min_meetings": 40,
+        "min_fusion": 1,
+        "c": 0.5,
+        "extra_features": false,
+        "bootstrap": 1000,
+        "seed": 42,
+        "cutoff": null,
+        "meetings": "state_of_art_model/fomc_meetings.csv",
+        "baseline_root": "chain_of_draft/results",
+        "baseline_csv": null,
+        "ensemble_csv": null,
+        "fred_dir": "data/fred",
+        "cache_dir": "cache/ensemble",
+        "outdir": "results\\completion_cache_audit_20261105_032156"
+      },
+      "python": "3.11.6",
+      "versions": {
+        "numpy": "2.4.6",
+        "pandas": "3.1.1",
+        "scipy": "1.17.1",
+        "scikit-learn": "1.9.1",
+        "matplotlib": "3.11.2",
+        "pandas-datareader": "0.11.1",
+        "openai": "3.45.0",
+        "google-genai": "2.34.0"
+      },
+      "class_order": [
+        "cut",
+        "hold",
+        "hike"
+      ],
+      "baseline_run": 1,
+      "ensemble_method": "three independent cached-discussion vote replays; not full CrewAI",
+      "timestamp_utc": "2026-11-04T21:51:59.385220+00:00"
+    }
+  ]
+}

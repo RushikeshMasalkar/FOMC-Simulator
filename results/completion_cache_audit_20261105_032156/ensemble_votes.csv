@@ -1,0 +1,4 @@
+Date,meeting_id,sample_idx,role,vote,committee_decision,sample_status,source,review_status,input_tokens,output_tokens,thinking_tokens,total_tokens
+2023-02-01,23_2,0,regional,2,,unresolved,existing_cache,reported_inconsistency,1830,123,,1953
+2023-02-01,23_2,0,academic,0,,unresolved,existing_cache,not_reviewed,1829,115,,1944
+2023-02-01,23_2,0,central,1,,unresolved,existing_cache,not_reviewed,1830,165,,1995

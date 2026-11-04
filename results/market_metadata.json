@@ -1,0 +1,18 @@
+{
+  "settings": {
+    "min_years": 5,
+    "min_meetings": 40,
+    "c": 0.5,
+    "extra_features": false,
+    "meetings_sha256": "442e07b655eea0238d7d99901adf984faac466f62ecac0e1d458527ffbfc18a5"
+  },
+  "fred_sha256": {
+    "DFF": "6f58d1bbc218d725caedb614844b90c4130992ec8687ac20646c58c3a8b2b04b",
+    "DTB3": "f0bfbd066a9d531731291c813f4917ef99480223a1e8fba6ab2d635315ed28a6",
+    "DTB6": "6e62fe61395a6e0caac5c6c4bde77bdb55f1e9da1e81e9c85b511b23ff377523",
+    "DGS1": "863ca97cf580daca9dd705c27f66479540415e69b9ab43090d9d48b0f8d2c11c",
+    "DGS2": "6b329c6229ec5447369e4d68f26d8fbec400f0cc920e8ffccc56766610e1d947",
+    "DGS10": "a960c659b08dec31394a7150119fd54dcd45091ec4cc017e318ba54aa11adfac",
+    "VIXCLS": "cf6c316330e6869bf93b464179173829c466f42e0007faa72c7d92dc39f2a957"
+  }
+}

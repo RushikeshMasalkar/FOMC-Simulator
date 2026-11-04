@@ -1,0 +1,17 @@
+{
+  "completed": false,
+  "planned_role_votes": 84,
+  "reused_cache_records": 3,
+  "invalid_cached_records": 0,
+  "new_responses": 65,
+  "invalid_new_responses": 0,
+  "failed_jobs": 16,
+  "provider_attempts_this_invocation": 81,
+  "provider_responses_this_invocation": 65,
+  "failed_provider_attempts_this_invocation": 16,
+  "prior_provider_attempts_and_failures": "unknown",
+  "provider": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "temperature": 0.7,
+  "k": 7
+}

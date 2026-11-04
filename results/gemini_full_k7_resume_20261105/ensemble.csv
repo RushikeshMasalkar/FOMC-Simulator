@@ -1,0 +1,4 @@
+Date,p_ens_cut,p_ens_hold,p_ens_hike,resolved_samples,unresolved_samples,ensemble_k,ensemble_model,ensemble_provider,ensemble_temp,ensemble_policy
+2023-05-03,0.42857142857142855,0.14285714285714285,0.42857142857142855,2,5,7,gemini-3.1-flash-lite,gemini,0.7,resolved_only_strict_majority_v1
+2024-03-20,0.7647058823529411,0.17647058823529413,0.058823529411764705,7,0,7,gemini-3.1-flash-lite,gemini,0.7,resolved_only_strict_majority_v1
+2024-09-18,0.8823529411764706,0.058823529411764705,0.058823529411764705,7,0,7,gemini-3.1-flash-lite,gemini,0.7,resolved_only_strict_majority_v1

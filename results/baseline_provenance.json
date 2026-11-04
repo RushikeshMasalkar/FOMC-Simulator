@@ -1,0 +1,166 @@
+[
+  {
+    "date": "2023-02-01",
+    "meeting_id": "23_2",
+    "source": "final_json_verified_against_tasks",
+    "used_votes": {
+      "Regional Pragmatist": "-0.25%",
+      "Academic Balancer": "-0.25%",
+      "Central Policymaker": "0.00%"
+    },
+    "decision": 0,
+    "audit": {
+      "summary_path": "chain_of_draft\\results\\23_2_run1\\rate_summary.json",
+      "summary_sha256": "a341c6221806aa6aa62f67c0e68391460b5665d917802f3af048fa49ac423a9e",
+      "transcript_path": "chain_of_draft\\results\\23_2_run1\\fomc_simulation.md",
+      "transcript_sha256": "9dfc7fd122ba3ff861249d6593de9442e48dc65a2fd57b5dba3569b9cb3a9071",
+      "final_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "task_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "intermediate_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "task_lines": {
+        "regional_vote": 463,
+        "academic_vote": 523,
+        "central_vote": 581,
+        "vote_summary": 684,
+        "summary_final": 721
+      },
+      "intermediate_matches_tasks": true,
+      "final_matches_tasks": true
+    }
+  },
+  {
+    "date": "2023-05-03",
+    "meeting_id": "23_5",
+    "source": "final_json_verified_against_tasks",
+    "used_votes": {
+      "Regional Pragmatist": "-0.25%",
+      "Academic Balancer": "-0.25%",
+      "Central Policymaker": "0.00%"
+    },
+    "decision": 0,
+    "audit": {
+      "summary_path": "chain_of_draft\\results\\23_5_run1\\rate_summary.json",
+      "summary_sha256": "bf21407a7029785c212acd7038837e124581b20089183b2934afce6ff1c3fb1a",
+      "transcript_path": "chain_of_draft\\results\\23_5_run1\\fomc_simulation.md",
+      "transcript_sha256": "4ba2b2b666cb3d1c67e9ebe0129f9a40836536666ac622f8c2cf4f3add81273f",
+      "final_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "task_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "intermediate_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "0.00%"
+      },
+      "task_lines": {
+        "regional_vote": 438,
+        "academic_vote": 496,
+        "central_vote": 557,
+        "vote_summary": 661,
+        "summary_final": 698
+      },
+      "intermediate_matches_tasks": true,
+      "final_matches_tasks": true
+    }
+  },
+  {
+    "date": "2024-03-20",
+    "meeting_id": "24_3",
+    "source": "final_json_verified_against_tasks",
+    "used_votes": {
+      "Regional Pragmatist": "-0.25%",
+      "Academic Balancer": "-0.25%",
+      "Central Policymaker": "-0.25%"
+    },
+    "decision": 0,
+    "audit": {
+      "summary_path": "chain_of_draft\\results\\24_3_run1\\rate_summary.json",
+      "summary_sha256": "b5ac088b1504ecfc87a7409536c868d0bbd88192685ec51cb8719f341a887789",
+      "transcript_path": "chain_of_draft\\results\\24_3_run1\\fomc_simulation.md",
+      "transcript_sha256": "9e56fb3e1bedecd09a50e64029fd2703e73fe8a56f1cc2f84183346eb302e328",
+      "final_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "-0.25%"
+      },
+      "task_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "-0.25%"
+      },
+      "intermediate_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "-0.25%"
+      },
+      "task_lines": {
+        "regional_vote": 443,
+        "academic_vote": 503,
+        "central_vote": 564,
+        "vote_summary": 664,
+        "summary_final": 701
+      },
+      "intermediate_matches_tasks": true,
+      "final_matches_tasks": true
+    }
+  },
+  {
+    "date": "2024-09-18",
+    "meeting_id": "24_9",
+    "source": "recovered_from_completed_voting_tasks",
+    "used_votes": {
+      "Regional Pragmatist": "-0.25%",
+      "Academic Balancer": "-0.25%",
+      "Central Policymaker": "-0.25%"
+    },
+    "decision": 0,
+    "audit": {
+      "summary_path": "chain_of_draft\\results\\24_9_run1\\rate_summary.json",
+      "summary_sha256": "e5fef1811078a87956e4dde3d2ec978c9dca7fb2f2e2d3a4dbca0ccdec045240",
+      "transcript_path": "chain_of_draft\\results\\24_9_run1\\fomc_simulation.md",
+      "transcript_sha256": "aa33531ef83cf220af9dd8f415c5726773708f3e287b69193fed900dfe49912b",
+      "final_votes": {
+        "Regional Pragmatist": "4.62%",
+        "Academic Balancer": "4.62%",
+        "Central Policymaker": "4.62%"
+      },
+      "task_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "-0.25%"
+      },
+      "intermediate_votes": {
+        "Regional Pragmatist": "-0.25%",
+        "Academic Balancer": "-0.25%",
+        "Central Policymaker": "-0.25%"
+      },
+      "task_lines": {
+        "regional_vote": 436,
+        "academic_vote": 497,
+        "central_vote": 558,
+        "vote_summary": 661,
+        "summary_final": 698
+      },
+      "intermediate_matches_tasks": true,
+      "final_matches_tasks": false
+    }
+  }
+]
