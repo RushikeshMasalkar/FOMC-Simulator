@@ -25,9 +25,12 @@ def ece(y, p, bins=10, adaptive=False):
 
 
 def metrics(y, p):
-    y, p = np.asarray(y, dtype=int), np.asarray(p, dtype=float)
-    if len(y) == 0 or p.shape != (len(y), 3) or not np.isfinite(p).all() or (p < 0).any() or not np.allclose(p.sum(axis=1), 1):
+    y, p = np.asarray(y), np.asarray(p, dtype=float)
+    if (y.ndim != 1 or len(y) == 0 or not np.isin(y, [0, 1, 2]).all() or
+            p.shape != (len(y), 3) or not np.isfinite(p).all() or
+            (p < 0).any() or not np.allclose(p.sum(axis=1), 1)):
         raise ValueError('invalid labels/probabilities')
+    y = y.astype(int)
     pred = p.argmax(axis=1)
     return {'accuracy': accuracy_score(y, pred),
             'macro_f1': f1_score(y, pred, labels=[0, 1, 2], average='macro', zero_division=0),
@@ -56,12 +59,15 @@ def confidence_intervals(y, variants, n_boot=1000, seed=42):
 
 def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
              cutoff=None, title='Full ablation'):
-    out = Path(outdir); figdir = out / 'figures'
-    figdir.mkdir(parents=True, exist_ok=True)
     df = df.sort_values('Date').reset_index(drop=True)
-    y = df.y.to_numpy(dtype=int)
+    y = df.y.to_numpy()
     if not len(y):
         raise ValueError('No common evaluation meetings')
+    if not np.isin(y, [0, 1, 2]).all():
+        raise ValueError('invalid labels/probabilities')
+    y = y.astype(int)
+    out = Path(outdir); figdir = out / 'figures'
+    figdir.mkdir(parents=True, exist_ok=True)
     probs = {}
     for name, source in variants.items():
         probs[name] = np.tile(smooth_votes([1]), (len(y), 1)) if source == 'always' else df[[source + x for x in CLASSES]].to_numpy(dtype=float)

@@ -148,9 +148,27 @@ def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
             return parse_response(record['text'])
         except (ValueError, KeyError, TypeError) as e:
             raise ValueError(f'{path}: invalid cached vote: {e}; inspect the response before retrying') from e
+    cached_votes = {}
     for job in jobs:
         if job[-1].exists():
-            read_record(job)
+            _, code, sample, role, _, _ = job
+            cached_votes[(code, sample, role)] = read_record(job)
+    # A previously completed sample can already be unresolved under the
+    # existing strict-majority rule. Detect it before scheduling any of the
+    # remaining paid calls; never discard, reinterpret, or resample its votes.
+    for _, code, _ in available:
+        for sample in range(k):
+            keys = [(code, sample, role) for role in ROLES]
+            if all(key in cached_votes for key in keys):
+                votes = [cached_votes[key] for key in keys]
+                try:
+                    majority(votes)
+                except ValueError:
+                    raise ValueError(
+                        f'{code} sample {sample}: No strict majority: {votes}. '
+                        'Cached votes retained; no new provider calls made. '
+                        'Decide how to handle unresolved votes before resuming.'
+                    ) from None
     budget = CallBudget(max_calls)
     if missing:
         client = make_provider(provider)

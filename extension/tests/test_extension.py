@@ -527,3 +527,127 @@ def test_diagnostic_rejects_untrusted_child_fields(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert 'Offline SDK mock check: unavailable (details redacted)' in captured.out
     assert secret not in captured.out + captured.err
+
+
+def test_cached_tie_stops_before_new_calls_and_preserves_all_votes(tmp_path, monkeypatch):
+    """A known tie in sample zero must not spend on the rest of K."""
+    from extension import ensemble
+    calls = []
+    class Fake:
+        def request(self, model, temp, prompt):
+            calls.append(1)
+            if prompt.startswith('As Regional Pragmatists,'):
+                return 'Reasoning mentions a cut.\nINTEREST RATE VOTE: +0.25%', None
+            if prompt.startswith('As Academic Balancers,'):
+                return 'INTEREST RATE VOTE: -0.25%', None
+            return 'INTEREST RATE VOTE: 0.00%', None
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda provider: Fake())
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    args = (meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7)
+    with pytest.raises(ValueError, match='No strict majority'):
+        run_ensemble(*args, k=1, max_calls=3, workers=1, provider='gemini')
+    assert len(calls) == 3
+    paths = sorted(tmp_path.rglob('*.json'))
+    assert len(paths) == 3
+    before = {path: path.read_bytes() for path in paths}
+    def no_provider(provider):
+        raise AssertionError('known tie must not initialize a provider')
+    monkeypatch.setattr(ensemble, 'make_provider', no_provider)
+    with pytest.raises(ValueError, match='no new provider calls made'):
+        run_ensemble(*args, k=2, max_calls=3, workers=1, provider='gemini')
+    assert len(calls) == 3
+    assert sorted(tmp_path.rglob('*.json')) == paths
+    assert {path: path.read_bytes() for path in paths} == before
+    # The explicit final line is parsed as a hike; prose is not reinterpreted.
+    assert ensemble.parse_response('Reasoning mentions a cut.\nINTEREST RATE VOTE: +0.25%') == 2
+
+
+def test_partial_cache_with_majority_resumes_without_resampling(tmp_path, monkeypatch):
+    from extension import ensemble
+    calls = []
+    class Fake:
+        def request(self, *args):
+            calls.append(1)
+            return 'INTEREST RATE VOTE: 0.00%', None
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda provider: Fake())
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    args = (meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7)
+    run_ensemble(*args, k=1, max_calls=3, workers=1, provider='gemini')
+    before = {path: path.read_bytes() for path in tmp_path.rglob('*.json')}
+    result = run_ensemble(*args, k=2, max_calls=3, workers=1, provider='gemini')
+    assert len(calls) == 6 and len(list(tmp_path.rglob('*.json'))) == 6
+    assert all(path.read_bytes() == content for path, content in before.items())
+    assert result.p_ens_hold.iloc[0] == pytest.approx(2.5 / 3.5)
+
+
+def test_metrics_rejects_out_of_range_and_fractional_labels():
+    probs = np.tile([.2, .6, .2], (2, 1))
+    for labels in ([-1, 1], [1, 3], [1, 1.5], [[0, 1]], [0, np.nan]):
+        with pytest.raises(ValueError, match='invalid labels/probabilities'):
+            metrics(labels, probs)
+
+
+def test_gemini_httpx2_network_errors_retry_with_budget(monkeypatch):
+    httpx2 = pytest.importorskip('httpx2')
+    from google import genai
+    from extension import ensemble
+    calls = []
+    class Models:
+        def generate_content(self, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise httpx2.ConnectError('private details must not be displayed')
+            return SimpleNamespace(text='INTEREST RATE VOTE: 0.00%', usage_metadata=None)
+    monkeypatch.setattr(genai, 'Client', lambda **kwargs: SimpleNamespace(models=Models()))
+    monkeypatch.setenv('GEMINI_API_KEY', 'fake-test-only')
+    monkeypatch.setattr(ensemble.time, 'sleep', lambda _: None)
+    provider = GeminiProvider()
+    assert provider.retryable(httpx2.TimeoutException('fake'))
+    assert provider.retryable(httpx2.ConnectError('fake'))
+    assert provider.retryable(httpx2.ReadError('fake'))
+    assert provider.retryable(httpx2.RemoteProtocolError('fake'))
+    budget = CallBudget(2)
+    text, _ = call_with_retry(provider, budget, 'gemini-3.1-flash-lite', .7, 'test', retries=1)
+    assert text == 'INTEREST RATE VOTE: 0.00%' and len(calls) == budget.used == 2
+
+
+def test_evaluation_rejects_fractional_outcome_before_writing(tmp_path):
+    df = pd.DataFrame({'Date': pd.to_datetime(['2024-01-31']), 'y': [1.5],
+                       'p_mkt_cut': [.2], 'p_mkt_hold': [.6], 'p_mkt_hike': [.2]})
+    output = tmp_path / 'evaluation'
+    with pytest.raises(ValueError, match='invalid labels/probabilities'):
+        evaluate(df, {'Always-hold': 'always', 'Market-only logit': 'p_mkt_'}, outdir=output)
+    assert not output.exists()
+
+
+def test_openai_errors_are_redacted_and_rate_limits_remain_retryable(monkeypatch):
+    import sys
+    from extension import ensemble
+    from extension.providers import OpenAIProvider, OpenAIRequestError
+    secret = 'sensitive-openai-error-should-not-appear'
+    calls = []
+    class RateLimit(Exception):
+        status_code = 429
+    class Connection(Exception): pass
+    class Timeout(Exception): pass
+    class ServerError(Exception): pass
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        def create(self, **kwargs):
+            calls.append(1)
+            if len(calls) in (1, 2): raise RateLimit(secret)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='INTEREST RATE VOTE: 0.00%'))], usage=None)
+    monkeypatch.setitem(sys.modules, 'openai', SimpleNamespace(OpenAI=FakeClient, RateLimitError=RateLimit,
+        APIConnectionError=Connection, APITimeoutError=Timeout, InternalServerError=ServerError))
+    monkeypatch.setattr(ensemble.time, 'sleep', lambda _: None)
+    provider = OpenAIProvider()
+    with pytest.raises(OpenAIRequestError) as caught:
+        provider.request('fake-model', .7, 'prompt')
+    assert secret not in str(caught.value) and '429' in str(caught.value)
+    assert provider.retryable(caught.value)
+    budget = CallBudget(2)
+    text, _ = call_with_retry(provider, budget, 'fake-model', .7, 'prompt', retries=1)
+    assert text == 'INTEREST RATE VOTE: 0.00%' and budget.used == 2

@@ -233,22 +233,40 @@ def local_gemini_diagnostics(model):
         print('This checks local SDK serialization, not the live network or account access.')
 
 
+class OpenAIRequestError(RuntimeError):
+    """Allowlisted failure details, without raw provider exceptions or bodies."""
+    def __init__(self, diagnostic, retryable=False):
+        super().__init__(diagnostic)
+        self.is_retryable = retryable
+
+
 class OpenAIProvider:
     def __init__(self):
         from openai import OpenAI, RateLimitError, APIConnectionError, APITimeoutError, InternalServerError
         # Explicit official endpoint prevents environment base-URL overrides from
         # silently mixing another provider into the OpenAI cache namespace.
-        self.client = OpenAI(max_retries=0, base_url='https://api.openai.com/v1')
+        try:
+            self.client = OpenAI(max_retries=0, base_url='https://api.openai.com/v1')
+        except Exception:
+            raise RuntimeError('Could not initialize OpenAI client; details redacted') from None
         self.retryable_types = (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError)
 
     def request(self, model, temperature, prompt):
-        response = self.client.chat.completions.create(model=model, temperature=temperature,
-                    messages=[{'role': 'user', 'content': prompt}])
-        text = response.choices[0].message.content or ''
-        usage = response.usage.model_dump(mode='json') if response.usage else None
-        return text, usage
+        try:
+            response = self.client.chat.completions.create(model=model, temperature=temperature,
+                        messages=[{'role': 'user', 'content': prompt}])
+            text = response.choices[0].message.content or ''
+            usage = response.usage.model_dump(mode='json') if response.usage else None
+            return text, usage
+        except Exception as error:
+            status = getattr(error, 'status_code', None)
+            status = str(status) if isinstance(status, int) and 100 <= status <= 599 else 'unavailable'
+            raise OpenAIRequestError(f'OpenAI request failed; HTTP status: {status}; details redacted',
+                                     self.retryable(error)) from None
 
     def retryable(self, error):
+        if isinstance(error, OpenAIRequestError):
+            return error.is_retryable
         return isinstance(error, self.retryable_types)
 
 
@@ -272,6 +290,15 @@ class GeminiProvider:
         self.types, self.api_error = types, errors.APIError
         self.network_errors = (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError,
                                httpx.RemoteProtocolError)
+        # Newer SDK releases can use httpx2; its exception classes are not
+        # subclasses of httpx's, even though the APIs look alike.
+        try:
+            import httpx2
+        except ImportError:
+            pass
+        else:
+            self.network_errors += (httpx2.TimeoutException, httpx2.ConnectError,
+                                    httpx2.ReadError, httpx2.RemoteProtocolError)
 
     def request(self, model, temperature, prompt):
         try:
