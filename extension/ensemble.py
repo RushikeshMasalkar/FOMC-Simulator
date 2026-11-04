@@ -88,12 +88,16 @@ def probe(provider, model, temp, max_calls):
     prompt = 'For a connectivity test, output exactly: INTEREST RATE VOTE: 0.00%'
     try:
         text, usage = call_with_retry(client, budget, model, temp, prompt, retries=0)
-        parse_response(text)
+        vote = parse_response(text)
     except Exception as error:
         raise RuntimeError(f'Provider probe failed ({type(error).__name__}): {error}') from error
     print(f'Probe succeeded: provider={provider}, model={model}, requests={budget.used}.')
-    print(f'Response: {text}')
-    print(f'Usage: {usage}')
+    print(f'Validated vote class: {vote} (0=cut, 1=hold, 2=hike).')
+    # Only known numeric token counts are printed, never arbitrary provider data.
+    allowed = ('prompt_token_count', 'candidates_token_count', 'thoughts_token_count',
+               'total_token_count', 'prompt_tokens', 'completion_tokens', 'total_tokens')
+    safe_usage = {k: usage[k] for k in allowed if isinstance(usage, dict) and type(usage.get(k)) is int}
+    print(f'Usage (numeric token counts): {safe_usage}')
 
 
 def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,

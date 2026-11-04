@@ -270,3 +270,127 @@ def test_fusion_cli_synthetic_integration_and_backup(tmp_path):
     assert any(x['source'] == 'recovered_from_completed_voting_tasks' for x in prov)
     backups = list((tmp_path / 'results_backups').glob('*/old_result.txt'))
     assert len(backups) == 1 and backups[0].read_text() == 'do not overwrite'
+
+
+def test_gemini_html_400_sdk_wire_request_and_redaction(tmp_path, monkeypatch, capsys):
+    """Use the real SDK with a mock HTTP transport: no live request is sent."""
+    import httpx
+    from google import genai
+    from extension.run_all import main
+    secret = 'test-key-never-log-this-value'
+    seen = []
+    real_client = genai.Client
+    def handler(request):
+        seen.append(request)
+        assert request.method == 'POST'
+        assert str(request.url) == 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
+        assert request.headers['x-goog-api-key'] == secret
+        body = json.loads(request.content)
+        assert body['generationConfig']['temperature'] == .7
+        assert body['contents'][0]['parts'][0]['text'].startswith('For a connectivity test')
+        return httpx.Response(400, request=request, headers={'content-type':'text/html', 'via':'secret-proxy-name'},
+                              text='<html><title>Error 400 (Bad Request)!!1</title>' + secret + '</html>')
+    def client(**kwargs):
+        assert kwargs['vertexai'] is False
+        assert kwargs['http_options'].retry_options.attempts == 1
+        kwargs['http_options'].httpx_client = httpx.Client(transport=httpx.MockTransport(handler))
+        return real_client(**kwargs)
+    monkeypatch.setattr(genai, 'Client', client)
+    monkeypatch.setenv('GEMINI_API_KEY', secret)
+    monkeypatch.setenv('HTTPS_PROXY', 'http://private-user:private-password@private-proxy:8080')
+    outdir = tmp_path / 'existing-results'; outdir.mkdir()
+    (outdir / 'result.txt').write_text('unchanged')
+    before = set(outdir.iterdir())
+    assert main(['--stage','probe','--provider','gemini','--model','gemini-3.1-flash-lite',
+                 '--max_calls','1','--outdir',str(outdir)]) == 1
+    output = capsys.readouterr().err
+    assert len(seen) == 1
+    assert 'HTTP status: 400' in output
+    assert 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent' in output
+    assert 'HTML error page' in output and 'forwarding headers: present' in output
+    assert 'origin cannot be established' in output
+    for value in (secret, 'private-user', 'private-password', 'private-proxy', 'secret-proxy-name'):
+        assert value not in output
+    assert set(outdir.iterdir()) == before
+    assert (outdir / 'result.txt').read_text() == 'unchanged'
+
+
+def test_gemini_sanitizes_json_error_and_request_query(monkeypatch):
+    import httpx
+    from google.genai import errors
+    from extension.providers import gemini_error_diagnostic
+    secret = 'test-secret-no-print'
+    req = httpx.Request('POST', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=' + secret)
+    response = httpx.Response(400, request=req, json={'error': {'status': 'INVALID_ARGUMENT',
+                    'message': 'API key not valid. ' + secret}})
+    error = errors.ClientError(400, response.json(), response)
+    message = gemini_error_diagnostic(error)
+    assert 'HTTP status: 400' in message and 'status=INVALID_ARGUMENT' in message
+    assert 'message indicates invalid API key' in message
+    assert secret not in message and '?key=' not in message
+    assert 'x-goog-api-key' not in message
+
+
+def test_gemini_sdk_rate_limit_counts_requests(monkeypatch):
+    import httpx
+    from google import genai
+    from extension import ensemble
+    real_client = genai.Client
+    calls = []
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, request=request, json={'error': {'status':'RESOURCE_EXHAUSTED'}})
+        return httpx.Response(200, request=request, json={'candidates': [{'content': {'role':'model',
+            'parts':[{'text':'INTEREST RATE VOTE: 0.00%'}]}, 'finishReason':'STOP'}]})
+    def client(**kwargs):
+        kwargs['http_options'].httpx_client = httpx.Client(transport=httpx.MockTransport(handler))
+        return real_client(**kwargs)
+    monkeypatch.setattr(genai, 'Client', client)
+    monkeypatch.setenv('GEMINI_API_KEY', 'fake-key')
+    monkeypatch.setattr(ensemble.time, 'sleep', lambda _: None)
+    provider = GeminiProvider()
+    budget = CallBudget(2)
+    text, _ = call_with_retry(provider, budget, 'gemini-3.1-flash-lite', .7, 'test', retries=1)
+    assert text == 'INTEREST RATE VOTE: 0.00%' and len(calls) == 2 and budget.used == 2
+
+
+def test_diagnose_is_offline_and_never_prints_secrets(tmp_path, monkeypatch, capsys):
+    from extension.run_all import main
+    secret = 'local-test-secret-with spaces'
+    monkeypatch.setenv('GEMINI_API_KEY', secret)
+    monkeypatch.setenv('HTTPS_PROXY', 'http://proxy-user:proxy-password@proxy-host:8000')
+    out = tmp_path / 'results'
+    assert main(['--stage', 'diagnose', '--provider', 'gemini', '--outdir', str(out)]) == 0
+    result = capsys.readouterr().out
+    assert 'no network request was made' in result and 'GEMINI_API_KEY: present' in result
+    assert 'contains whitespace: yes' in result
+    assert 'HTTPS_PROXY' in result
+    assert all(x not in result for x in (secret, 'proxy-user', 'proxy-password', 'proxy-host'))
+    assert not out.exists()
+
+
+def test_gemini_diagnostic_never_prints_unknown_host_or_url_secrets():
+    import httpx
+    from google.genai import errors
+    from extension.providers import gemini_error_diagnostic
+    secret = 'secret-token-123'
+    req = httpx.Request('POST', f'https://{secret}.example.invalid/path/{secret}?key={secret}')
+    res = httpx.Response(400, text=f'<html>{secret}</html>', request=req)
+    output = gemini_error_diagnostic(errors.ClientError(400, {'message': res.text}, res))
+    assert 'nonstandard endpoint' in output and 'HTTP status: 400' in output
+    assert secret not in output and 'example.invalid' not in output
+
+
+def test_probe_does_not_print_raw_model_text_or_non_numeric_usage(monkeypatch, capsys):
+    from extension import ensemble
+    class Fake:
+        def request(self, *args):
+            return 'INTEREST RATE VOTE: 0.00%\nsecret-token-should-not-appear', {
+                'prompt_token_count': 5, 'other': 'sensitive', 'total_token_count': 'sensitive'}
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda provider: Fake())
+    probe('gemini', 'gemini-3.1-flash-lite', .7, 1)
+    output = capsys.readouterr().out
+    assert 'Validated vote class: 1' in output and "'prompt_token_count': 5" in output
+    assert 'secret-token-should-not-appear' not in output and 'sensitive' not in output

@@ -15,12 +15,13 @@ from .market_prior import load_meetings, build_features, walk_forward
 from .committee import load_baseline
 from .fusion import smooth_votes, walk_forward_fusion
 from .ensemble import run_ensemble, probe
+from .providers import local_gemini_diagnostics
 from .evaluate import evaluate
 
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval', 'probe'], default='all')
+    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval', 'probe', 'diagnose'], default='all')
     p.add_argument('--k', type=int, default=7)
     p.add_argument('--temp', type=float, default=0.7)
     p.add_argument('--max_calls', type=int, default=0, help='Hard maximum API requests this invocation, including retries (default 0)')
@@ -197,13 +198,18 @@ def main(argv=None):
     try:
         if args.dry_run and args.stage not in ('ensemble',):
             raise ValueError('--dry_run is supported with --stage ensemble only')
+        if args.stage == 'diagnose':
+            if args.provider != 'gemini':
+                raise ValueError('diagnose currently supports --provider gemini')
+            local_gemini_diagnostics(args.model)
+            return 0
+        if args.stage == 'probe':
+            probe(args.provider, args.model, args.temp, args.max_calls)
+            return 0
         if not args.dry_run:
             backup_results(out)
             out.mkdir(parents=True, exist_ok=True)
             config(args, out)
-        if args.stage == 'probe':
-            probe(args.provider, args.model, args.temp, args.max_calls)
-            return 0
         meetings = load_meetings(args.meetings)
         if args.stage in ('all', 'market'): market_stage(meetings, args, out)
         if args.stage in ('all', 'fusion'): phase2(meetings, args, out)

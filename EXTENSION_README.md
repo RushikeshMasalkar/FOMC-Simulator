@@ -18,7 +18,7 @@ python -m pip install "google-genai>=2.0,<3.0"
 
 All examples below run from the project root. Existing market data are read from `data/fred/`. `--stage market` downloads FRED public CSVs without a key; users who have already run it should not repeat it. Market settings and the meeting-file hash must match those recorded in `results/market_metadata.json`.
 
-Before each non-dry CLI stage writes to the output directory, the entire existing `results/` directory is copied to a timestamped `results_backups/` folder. Downloaded FRED inputs and previous caches are not deleted or overwritten. Still make your own independent backup of your project, results, data and cache before applying updates; a filesystem copy can fail if the disk is full. Dry runs do not write results or use a key. Never run simultaneous processes sharing one cache.
+Before a CLI stage that writes results, the entire existing `results/` directory is copied to a timestamped `results_backups/` folder. Downloaded FRED inputs and previous caches are not deleted or overwritten. Still make your own independent backup of your project, results, data and cache before applying updates; a filesystem copy can fail if the disk is full. Dry runs, the local diagnostic, and the probe do not write results. The diagnostic makes no network call; the probe makes one paid or quota-limited request. Never run simultaneous processes sharing one cache.
 
 ## Fusion: no LLM cost
 
@@ -39,13 +39,21 @@ $env:GEMINI_API_KEY = ([System.Net.NetworkCredential]::new('', (Read-Host 'Gemin
 python -c "import os; print('Gemini key is set' if os.getenv('GEMINI_API_KEY') else 'Gemini key is NOT set')"
 ```
 
+First, check local Gemini configuration without a network request or secret output:
+
+```powershell
+python -m extension.run_all --stage diagnose --provider gemini --model gemini-3.1-flash-lite
+```
+
+It prints only whether the key is present, whether it contains whitespace, SDK version, configured endpoint/API version, and proxy environment variable names; it never prints the key or proxy values. System proxies may not appear in the environment variable list.
+
 A single optional real API connectivity request can incur charges and is **not cached**:
 
 ```powershell
 python -m extension.run_all --stage probe --provider gemini --model gemini-3.1-flash-lite --max_calls 1
 ```
 
-Success prints provider, model, one request, response and usage. Authentication, access, quota, network, or malformed-response failures must be resolved before proceeding. We have tested provider logic with mocks only, not a live Gemini request.
+Success prints provider, model, one request, the validated vote class and numeric token usage; raw response text is not printed. A failed Gemini request reports the HTTP status, a safely allowlisted endpoint and a sanitized classification of the response body; it never prints raw response bodies, query parameters, authentication headers, proxy addresses or key values. An HTML 400 page alone does not prove whether Google or an intermediary produced it. Authentication, model access, account quota, network/proxy configuration and request validity are possible causes. See `docs/gemini_probe_debug.md`. We have tested provider logic with mocks only, not a live Gemini request.
 
 Dry-run estimate (free, no key required):
 
