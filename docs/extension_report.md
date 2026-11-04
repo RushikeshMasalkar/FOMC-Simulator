@@ -1,4 +1,6 @@
-# Market-fusion extension: status
+# Market-fusion extension: historical sandbox audit
+
+> **Current status:** The owner now reports a completed four-meeting Gemini ensemble and manual review. See [Extension results and evaluation](EXTENSION_RESULTS.md) for those owner-reported results, provenance and limitations. The sandbox did not have access to the Windows results or private cache. The audit below preserves earlier sandbox findings and does not independently verify the completed run.
 
 ## Implemented and tested
 
@@ -21,7 +23,7 @@ The four-meeting baseline accuracy is 1/4 (25%); this is descriptive, not eviden
 
 ## Results and limitations
 
-No actual ablation table, fitted weights, or claims of improvement are reported here: the user's downloaded FRED data and API key are on their computer, not in this sandbox. Tests use synthetic probabilities strictly for plumbing. The checked-in committee has only four dates in two years, so after nested training there are at most two test meetings and only two prior fusion-training meetings. Any resulting numerical table is not a credible research conclusion; bootstrap intervals are conditional on predictions and particularly unstable here. The test subset may lack classes, making class-specific metrics and MCC undefined.
+No actual ablation table, fitted weights, or claims of improvement are independently verified in this sandbox: the user's downloaded FRED data and API key are on their computer, not in this sandbox. Tests use synthetic probabilities strictly for plumbing. The checked-in committee has only four dates in two years, so after nested training there are at most two test meetings and only two prior fusion-training meetings. Any resulting numerical table is not a credible research conclusion; bootstrap intervals are conditional on predictions and particularly unstable here. The test subset may lack classes, making class-specific metrics and MCC undefined.
 
 The market prior is statistical, not an LLM agent, and departs from the paper's all-agent design. α and β are conditional predictive coefficients, not causal evidence or normalized trust. The original baseline already references FedWatch, so signals are not independent. Gemini vote sampling uses cached discussions and an approximate role prompt rather than a full CrewAI rerun; memory, retrieval and system prompts differ. Original prompts contain dates, including a hard-coded 2024 vote date across meetings, and the model may know historical outcomes. FRED observation dates alone do not prove release time or vintage. Near-zero-rate regimes make spreads less informative. No anonymized or post-cutoff experiment has been performed.
 
@@ -35,4 +37,4 @@ After the user delegated the unresolved-tie policy and chose to retain and flag 
 
 ## Next steps
 
-The user reports that a one-meeting K=1 Gemini smoke test produced one cut, one hold, and one hike; a reported reasoning/final-vote inconsistency should be marked for human review in the vote audit. The approved policy retains signed final votes, flags reported mismatches, and excludes the unresolved sample from conditional probabilities. Verify actual cache compatibility, the Windows market outputs, and obtain explicit approval of the request/cost budget before running the paid three-meeting smoke and then completing the batch in a separate output directory. Collect substantially more genuinely out-of-sample committee outputs and audited point-in-time inputs before interpreting coefficients or comparing variants, and report all predeclared outcomes and uncertainty, including unfavorable results.
+The earlier one-meeting smoke was superseded by the owner's reported completed K=7 ensemble. Its artifacts and the 42-response manual review are not available in this sandbox. Preserve all source responses and existing audit files, verify the reported counts against the artifacts when available, and see the [future-work checklist](EXTENSION_RESULTS.md#future-work--todo--not-implemented). Further paid experiments require a separately approved budget and are not part of this documentation update.

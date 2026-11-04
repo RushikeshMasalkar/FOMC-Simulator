@@ -1,5 +1,7 @@
 # Extension reconnaissance and blockers
 
+> **Historical audit:** This document records the earlier sandbox state. The owner now reports a completed Gemini ensemble on Windows; see [Extension results](EXTENSION_RESULTS.md). Those private artifacts were not available for independent verification here.
+
 Audit date: 2026-11-04. At the time of the audit, Phase 1 was **blocked**. The extension has since been implemented and exercised with synthetic data only; no real-data model evaluation or LLM calls have been made. The attached nine-page paper was examined alongside the repository. This document is an audit, not an ablation result.
 
 ## Paper and implementation
