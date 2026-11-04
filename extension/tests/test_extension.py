@@ -15,6 +15,13 @@ from extension.providers import GeminiProvider
 from extension.evaluate import metrics, ece
 
 
+@pytest.fixture(autouse=True)
+def _isolate_shared_gemini_limiter(monkeypatch):
+    # A real process shares quota state, but tests must not inherit other tests' clocks.
+    from extension import ensemble
+    monkeypatch.setattr(ensemble, '_gemini_limiter', None)
+
+
 def market_frame():
     dates = pd.date_range('2010-01-01', '2010-04-01', freq='D')
     return pd.DataFrame({s: np.arange(len(dates), dtype=float) + i for i,s in enumerate(SERIES)}, index=dates)
@@ -820,3 +827,267 @@ def test_cache_write_failure_is_not_misreported_as_provider_failure(tmp_path, mo
     assert audit['provider_responses_this_invocation'] == 3
     assert audit['failed_provider_attempts_this_invocation'] == 0
     assert audit['new_responses'] == 0 and audit['failed_jobs'] == 3
+
+
+class _VirtualClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+    def monotonic(self):
+        return self.now
+    def sleep(self, seconds):
+        assert seconds >= 0
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def test_gemini_limiter_concurrent_rolling_window_and_budget():
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from extension.ensemble import GeminiRateLimiter
+    clock = _VirtualClock()
+    limiter = GeminiRateLimiter(clock=clock.monotonic, sleep=clock.sleep)
+    budget = CallBudget(35)
+    starts, finishes = [], []
+    barrier = threading.Barrier(20)
+    def request():
+        starts.append(clock.now)
+        clock.now += .25  # Simulate a non-zero synchronous request duration.
+        finishes.append(clock.now)
+    def work(i):
+        if i < 20:
+            barrier.wait(timeout=5)
+        limiter.call(budget, request)
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        list(pool.map(work, range(35)))
+    assert len(starts) == len(finishes) == budget.used == 35
+    assert clock.sleeps and all(delay > 0 for delay in clock.sleeps)
+    for start in starts:
+        assert sum(start - 60 < t <= start for t in starts) <= 10
+    assert all(starts[i] >= finishes[i - 1] for i in range(1, len(starts)))
+    before = (len(starts), len(clock.sleeps))
+    with pytest.raises(RuntimeError, match='budget exhausted'):
+        limiter.call(budget, request)
+    assert (len(starts), len(clock.sleeps)) == before
+
+
+def test_gemini_retry_rate_limit_and_budget_all_attempts(monkeypatch):
+    from extension import ensemble
+    from extension.providers import GeminiRequestError
+    clock = _VirtualClock()
+    limiter = ensemble.GeminiRateLimiter(limit=2, clock=clock.monotonic, sleep=clock.sleep)
+    monkeypatch.setattr(ensemble.time, 'sleep', clock.sleep)
+    monkeypatch.setattr(ensemble.random, 'uniform', lambda low, high: low)
+    starts = []
+    class Fake:
+        def request(self, *args):
+            starts.append(clock.now)
+            if len(starts) <= 2:
+                raise GeminiRequestError('redacted', True, True, retry_after=3)
+            return 'ok', None
+        def retryable(self, error): return error.is_retryable
+    budget = CallBudget(3)
+    assert call_with_retry(Fake(), budget, 'model', .7, 'prompt', retries=2, rate_limiter=limiter) == ('ok', None)
+    assert starts == [0, 3, 60] and budget.used == 3
+    assert clock.sleeps == [3, 4, 53]
+    starts.clear(); clock.now = 0; clock.sleeps.clear()
+    limiter = ensemble.GeminiRateLimiter(limit=2, clock=clock.monotonic, sleep=clock.sleep)
+    budget = CallBudget(2)
+    with pytest.raises(RuntimeError, match='budget exhausted'):
+        call_with_retry(Fake(), budget, 'model', .7, 'prompt', retries=3, rate_limiter=limiter)
+    assert starts == [0, 3] and budget.used == 2 and clock.sleeps == [3]
+
+
+def test_gemini_retry_after_backoff_and_nonretryable(monkeypatch):
+    from extension import ensemble
+    from extension.providers import GeminiRequestError
+    waits = []
+    monkeypatch.setattr(ensemble.time, 'sleep', waits.append)
+    monkeypatch.setattr(ensemble.random, 'uniform', lambda low, high: high)
+    class Fake:
+        def __init__(self, error): self.error, self.calls = error, 0
+        def request(self, *args):
+            self.calls += 1
+            if self.calls == 1: raise self.error
+            return 'ok', None
+        def retryable(self, error): return error.is_retryable
+    retryable = Fake(GeminiRequestError('safe', True, True, retry_after=17))
+    budget = CallBudget(2)
+    assert call_with_retry(retryable, budget, 'm', .7, 'p') == ('ok', None)
+    assert waits == [17] and budget.used == 2
+    waits.clear()
+    nonretryable = Fake(GeminiRequestError('safe', False, True, retry_after=17))
+    budget = CallBudget(2)
+    with pytest.raises(GeminiRequestError): call_with_retry(nonretryable, budget, 'm', .7, 'p')
+    assert waits == [] and nonretryable.calls == budget.used == 1
+    excessive = Fake(GeminiRequestError('safe', True, True, retry_after=301))
+    budget = CallBudget(2)
+    with pytest.raises(GeminiRequestError): call_with_retry(excessive, budget, 'm', .7, 'p')
+    assert waits == [] and excessive.calls == budget.used == 1
+
+
+def test_gemini_retry_after_is_safe_and_honored_with_sdk_mock(monkeypatch):
+    import httpx
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    from google import genai
+    from google.genai import errors
+    from extension import ensemble
+    from extension.providers import GeminiRequestError, retry_after_seconds
+    request = httpx.Request('POST', 'https://generativelanguage.googleapis.com/test')
+    future = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=90), usegmt=True)
+    date_error = errors.APIError(429, {}, httpx.Response(429, request=request, headers={'Retry-After': future}))
+    assert 88 <= retry_after_seconds(date_error) <= 90
+    invalid = errors.APIError(429, {}, httpx.Response(429, request=request, headers={'Retry-After': 'bad-secret'}))
+    assert retry_after_seconds(invalid) is None
+    excessive = errors.APIError(429, {}, httpx.Response(429, request=request, headers={'Retry-After': '9' * 129}))
+    assert retry_after_seconds(excessive) == float('inf')
+
+    real_client = genai.Client
+    calls = []
+    clock = _VirtualClock()
+    waits = clock.sleeps
+    monkeypatch.setattr(ensemble, '_gemini_limiter',
+                        ensemble.GeminiRateLimiter(clock=clock.monotonic, sleep=clock.sleep))
+    def handler(req):
+        calls.append(req)
+        if len(calls) == 1:
+            return httpx.Response(429, request=req, headers={'Retry-After': '42'},
+                                  json={'error': {'status': 'RESOURCE_EXHAUSTED', 'message': 'private-detail'}})
+        return httpx.Response(200, request=req, json={'candidates': [{'content': {'role': 'model',
+            'parts': [{'text': 'INTEREST RATE VOTE: 0.00%'}]}, 'finishReason': 'STOP'}]})
+    def client(**kwargs):
+        kwargs['http_options'].httpx_client = httpx.Client(transport=httpx.MockTransport(handler))
+        return real_client(**kwargs)
+    monkeypatch.setattr(genai, 'Client', client)
+    monkeypatch.setenv('GEMINI_API_KEY', 'fake-key')
+    monkeypatch.setattr(ensemble.time, 'sleep', clock.sleep)
+    monkeypatch.setattr(ensemble.random, 'uniform', lambda low, high: low)
+    provider = GeminiProvider()
+    with pytest.raises(GeminiRequestError) as caught:
+        provider.request('gemini-3.1-flash-lite', .7, 'prompt')
+    assert caught.value.rate_limited and caught.value.retry_after == 42
+    assert provider.retryable(caught.value) and 'private-detail' not in str(caught.value)
+    calls.clear()
+    budget = CallBudget(2)
+    result = call_with_retry(provider, budget, 'gemini-3.1-flash-lite', .7, 'prompt', retries=1)
+    assert result[0] == 'INTEREST RATE VOTE: 0.00%' and budget.used == 2 and waits == [42]
+    invalid_status = errors.APIError(400, {'error': {'status': 'RESOURCE_EXHAUSTED'}})
+    assert not provider.retryable(invalid_status)
+
+
+def test_gemini_reuses_68_cached_votes_and_requests_only_16(tmp_path, monkeypatch):
+    import hashlib
+    from extension import ensemble
+    dates = pd.to_datetime(['2023-02-01', '2023-05-03', '2024-03-20', '2024-09-18'])
+    meetings = pd.DataFrame({'Date': dates})
+    cache = tmp_path / 'cache'
+    model, temp = 'gemini-3.1-flash-lite', .7
+    records = []
+    for date in dates:
+        code = ensemble.meeting_code(date)
+        context = discussions(Path('chain_of_draft/results') / f'{code}_run1' / 'fomc_simulation.md')
+        for sample in range(7):
+            for role in ensemble.ROLES:
+                prompt = ensemble.vote_prompt(role, date, context)
+                path = cache_path(cache, code, sample, model, temp, role, prompt, 'gemini')
+                record = {'provider': 'gemini', 'meeting_id': code, 'date': str(date.date()),
+                          'sample_idx': sample, 'model': model, 'temperature': temp, 'role': role,
+                          'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
+                          'text': 'INTEREST RATE VOTE: 0.00%', 'usage': None}
+                records.append((path, record))
+    for path, record in records[:68]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record), encoding='utf-8')
+    before = {path: path.read_bytes() for path, _ in records[:68]}
+    calls = []
+    class Fake:
+        def request(self, *args):
+            calls.append(1)
+            return 'INTEREST RATE VOTE: 0.00%', None
+        def retryable(self, error): return False
+    clock = _VirtualClock()
+    real_limiter = ensemble.GeminiRateLimiter
+    monkeypatch.setattr(ensemble, 'GeminiRateLimiter',
+                        lambda: real_limiter(clock=clock.monotonic, sleep=clock.sleep))
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    result = run_ensemble(meetings, 'chain_of_draft/results', cache, model, temp, 7,
+                          max_calls=16, workers=8, provider='gemini')
+    assert len(calls) == 16 and result.attrs['run_audit']['reused_cache_records'] == 68
+    assert result.attrs['run_audit']['provider_attempts_this_invocation'] == 16
+    assert {path: path.read_bytes() for path, _ in records[:68]} == before
+    assert all(path.exists() for path, _ in records)
+    assert clock.sleeps == [60]
+
+
+def test_gemini_429_exponential_backoff_is_capped_and_jittered(monkeypatch):
+    from extension import ensemble
+    from extension.providers import GeminiRequestError
+    waits, jitter_ranges = [], []
+    monkeypatch.setattr(ensemble.time, 'sleep', waits.append)
+    def jitter(low, high):
+        jitter_ranges.append((low, high))
+        return low
+    monkeypatch.setattr(ensemble.random, 'uniform', jitter)
+    class Fake:
+        def request(self, *args): raise GeminiRequestError('safe', True, True)
+        def retryable(self, error): return error.is_retryable
+    budget = CallBudget(7)
+    with pytest.raises(GeminiRequestError):
+        call_with_retry(Fake(), budget, 'm', .7, 'p', retries=6)
+    assert budget.used == 7
+    assert waits == [2, 4, 8, 16, 30, 30]
+    assert jitter_ranges == [(2, 4), (4, 8), (8, 16), (16, 32), (30, 60), (30, 60)]
+
+
+def test_openai_does_not_use_gemini_limiter(tmp_path, monkeypatch):
+    from extension import ensemble
+    monkeypatch.setattr(ensemble, 'GeminiRateLimiter', lambda: pytest.fail('OpenAI must not use Gemini limiter'))
+    calls = []
+    class Fake:
+        def request(self, *args):
+            calls.append(1)
+            return 'INTEREST RATE VOTE: 0.00%', None
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    result = run_ensemble(meetings, 'chain_of_draft/results', tmp_path, 'fake-openai', .7, 4,
+                          max_calls=12, workers=8, provider='openai')
+    assert len(calls) == result.attrs['run_audit']['provider_attempts_this_invocation'] == 12
+
+
+def test_retry_after_cooldown_shared_across_workers_and_excessive_halts():
+    from extension.ensemble import GeminiRateLimiter
+    from extension.providers import GeminiRequestError
+    clock = _VirtualClock()
+    limiter = GeminiRateLimiter(clock=clock.monotonic, sleep=clock.sleep)
+    budget = CallBudget(3)
+    def rejected(): raise GeminiRequestError('safe', True, True, retry_after=42)
+    with pytest.raises(GeminiRequestError): limiter.call(budget, rejected)
+    starts = []
+    limiter.call(budget, lambda: starts.append(clock.now))
+    assert starts == [42] and clock.sleeps == [42] and budget.used == 2
+    def long_delay(): raise GeminiRequestError('safe', True, True, retry_after=301)
+    with pytest.raises(GeminiRequestError): limiter.call(budget, long_delay)
+    with pytest.raises(GeminiRequestError): limiter.call(budget, lambda: starts.append(clock.now))
+    assert starts == [42] and budget.used == 3
+
+
+def test_gemini_limiter_is_shared_between_runs_in_one_process(tmp_path, monkeypatch):
+    from extension import ensemble
+    clock = _VirtualClock()
+    limiter = ensemble.GeminiRateLimiter(clock=clock.monotonic, sleep=clock.sleep)
+    monkeypatch.setattr(ensemble, '_gemini_limiter', limiter)
+    starts = []
+    class Fake:
+        def request(self, *args):
+            starts.append(clock.now)
+            return 'INTEREST RATE VOTE: 0.00%', None
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    for directory in ('cache1', 'cache2'):
+        run_ensemble(meetings, 'chain_of_draft/results', tmp_path / directory,
+                     'fake-model', .7, 2, max_calls=6, workers=4, provider='gemini')
+    assert ensemble.shared_gemini_limiter() is limiter
+    assert len(starts) == 12 and starts[:10] == [0] * 10 and starts[10:] == [60] * 2

@@ -1,6 +1,8 @@
 """Explicit, independently configured LLM providers with SDK retries disabled."""
 import os
 import json
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/'
@@ -10,9 +12,33 @@ GEMINI_MODEL = 'gemini-3.1-flash-lite'
 
 class GeminiRequestError(RuntimeError):
     """Error carrying only an allowlisted diagnostic, never raw request data."""
-    def __init__(self, diagnostic, retryable=False):
+    def __init__(self, diagnostic, retryable=False, rate_limited=False, retry_after=None):
         super().__init__(diagnostic)
         self.is_retryable = retryable
+        self.rate_limited = rate_limited
+        self.retry_after = retry_after
+
+
+def retry_after_seconds(error):
+    """Read only a valid Retry-After delay; never expose raw headers or bodies."""
+    try:
+        response = getattr(error, 'response', None)
+        value = response.headers.get('retry-after') if response is not None else None
+        if value is None and response is not None:
+            value = response.headers.get('Retry-After')
+        if not isinstance(value, str):
+            return None
+        if len(value) > 128:
+            return float('inf')  # Fail closed rather than shorten an excessive delay.
+        value = value.strip()
+        if value.isascii() and value.isdigit():
+            return float(int(value))
+        date = parsedate_to_datetime(value)
+        if date.tzinfo is None:
+            return None
+        return max(0.0, (date - datetime.now(timezone.utc)).total_seconds())
+    except (AttributeError, OverflowError, TypeError, ValueError):
+        return None
 
 
 def proxy_environment():
@@ -310,7 +336,10 @@ class GeminiProvider:
         except Exception as error:
             # Never pass raw exception strings, response headers, URLs with queries,
             # or bodies to the CLI; they may include credentials or proxy secrets.
-            raise GeminiRequestError(gemini_error_diagnostic(error), self.retryable(error)) from None
+            rate_limited = (getattr(error, 'code', None) == 429 or
+                            getattr(error, 'status', None) == 'RESOURCE_EXHAUSTED')
+            raise GeminiRequestError(gemini_error_diagnostic(error), self.retryable(error),
+                                     rate_limited, retry_after_seconds(error)) from None
 
     def retryable(self, error):
         if isinstance(error, GeminiRequestError):

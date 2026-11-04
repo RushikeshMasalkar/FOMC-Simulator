@@ -1,8 +1,10 @@
 """Sample member votes from saved discussions, not a full CrewAI replay."""
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import hashlib
 import json
+import random
 import re
 import threading
 import time
@@ -63,17 +65,87 @@ class EnsembleRunError(RuntimeError):
         self.audit = audit
 
 
+class BudgetExhausted(RuntimeError):
+    """No further provider attempts are permitted in this invocation."""
+
+
 class CallBudget:
     def __init__(self, maximum):
         if maximum < 0:
             raise ValueError('max_calls must be non-negative')
         self.maximum, self.used, self.lock = maximum, 0, threading.Lock()
 
+    def check_available(self):
+        with self.lock:
+            if self.used >= self.maximum:
+                raise BudgetExhausted(f'LLM call budget exhausted ({self.maximum})')
+
     def acquire(self):
         with self.lock:
             if self.used >= self.maximum:
-                raise RuntimeError(f'LLM call budget exhausted ({self.maximum})')
+                raise BudgetExhausted(f'LLM call budget exhausted ({self.maximum})')
             self.used += 1
+
+
+class GeminiRateLimiter:
+    """Conservative per-process rolling limit; serializes synchronous requests.
+
+    Record completion rather than reservation times: a delayed or slow request
+    can then never cause subsequent starts to exceed the rolling-window bound.
+    """
+    def __init__(self, limit=10, window=60.0, clock=None, sleep=None):
+        if limit < 1 or window <= 0:
+            raise ValueError('rate limit and window must be positive')
+        self.limit, self.window = limit, window
+        self.clock, self.sleep = clock or time.monotonic, sleep or time.sleep
+        self.completed = deque()
+        self.not_before = float('-inf')
+        self.blocked = None
+        self.lock = threading.Lock()
+
+    def call(self, budget, request):
+        from .providers import GeminiRequestError
+        with self.lock:
+            if self.blocked is not None:
+                raise self.blocked
+            budget.check_available()  # Avoid waiting when no attempts remain.
+            while True:
+                now = self.clock()
+                while self.completed and now - self.completed[0] >= self.window:
+                    self.completed.popleft()
+                window_wait = (self.window - (now - self.completed[0])
+                               if len(self.completed) >= self.limit else 0.0)
+                wait = max(window_wait, self.not_before - now, 0.0)
+                if wait <= 0:
+                    break
+                self.sleep(wait)
+            budget.acquire()
+            try:
+                return request()
+            except GeminiRequestError as error:
+                # Honor a server delay across all workers, not just the worker
+                # that received it. Never silently clip an excessive directive.
+                if error.is_retryable and error.retry_after is not None:
+                    if error.retry_after > 300:
+                        self.blocked = error
+                    else:
+                        self.not_before = max(self.not_before, self.clock() + error.retry_after)
+                raise
+            finally:
+                self.completed.append(self.clock())
+
+
+_gemini_limiter = None
+_gemini_limiter_lock = threading.Lock()
+
+
+def shared_gemini_limiter():
+    """Share one limiter across all Gemini invocations in this process."""
+    global _gemini_limiter
+    with _gemini_limiter_lock:
+        if _gemini_limiter is None:
+            _gemini_limiter = GeminiRateLimiter()
+        return _gemini_limiter
 
 
 def cache_path(directory, meeting, idx, model, temp, role, prompt, provider='openai'):
@@ -82,15 +154,34 @@ def cache_path(directory, meeting, idx, model, temp, role, prompt, provider='ope
     return Path(directory) / provider / meeting / f'{idx:03d}-{role}-{digest}.json'
 
 
-def call_with_retry(client, budget, model, temp, prompt, retries=3):
+def call_with_retry(client, budget, model, temp, prompt, retries=3, rate_limiter=None):
+    from .providers import GeminiProvider, GeminiRequestError
+    if rate_limiter is None and isinstance(client, GeminiProvider):
+        rate_limiter = shared_gemini_limiter()
     for attempt in range(retries + 1):
-        budget.acquire()
         try:
-            return client.request(model, temp, prompt)
+            if rate_limiter is None:
+                budget.acquire()
+                return client.request(model, temp, prompt)
+            return rate_limiter.call(budget, lambda: client.request(model, temp, prompt))
         except Exception as error:
-            if not client.retryable(error) or attempt == retries:
+            if isinstance(error, BudgetExhausted) or not client.retryable(error) or attempt == retries:
                 raise
-            time.sleep(min(2 ** attempt, 16))
+            budget.check_available()
+            delay = min(2 ** attempt, 16)
+            if isinstance(error, GeminiRequestError):
+                # Equal jitter avoids synchronized retries while keeping a
+                # meaningful minimum delay for 429/RESOURCE_EXHAUSTED.
+                if error.rate_limited:
+                    cap = min(4 * 2 ** attempt, 60)
+                    delay = random.uniform(cap / 2, cap)
+                if error.retry_after is not None:
+                    # Never retry sooner than an excessive server directive;
+                    # fail instead of silently clipping it to our safety cap.
+                    if error.retry_after > 300:
+                        raise
+                    delay = max(delay, error.retry_after)
+            time.sleep(delay)
 
 
 def probe(provider, model, temp, max_calls):
@@ -101,7 +192,8 @@ def probe(provider, model, temp, max_calls):
     budget = CallBudget(max_calls)
     prompt = 'For a connectivity test, output exactly: INTEREST RATE VOTE: 0.00%'
     try:
-        text, usage = call_with_retry(client, budget, model, temp, prompt, retries=0)
+        limiter = shared_gemini_limiter() if provider == 'gemini' else None
+        text, usage = call_with_retry(client, budget, model, temp, prompt, retries=0, rate_limiter=limiter)
         vote = parse_response(text)
     except Exception as error:
         raise RuntimeError(f'Provider probe failed ({type(error).__name__}): {error}') from error
@@ -193,6 +285,7 @@ def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
              'invalid_new_responses': 0, 'provider_attempts_this_invocation': 0,
              'failed_provider_attempts_this_invocation': 0, 'prior_provider_attempts_and_failures': 'unknown'})
     budget = CallBudget(max_calls)
+    limiter = shared_gemini_limiter() if provider == 'gemini' else None
     response_count = 0
     response_lock = threading.Lock()
     if missing:
@@ -207,7 +300,7 @@ def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
         def invoke(job):
             nonlocal response_count
             date, code, sample, role, prompt, path = job
-            text, usage = call_with_retry(client, budget, model, temp, prompt, retries)
+            text, usage = call_with_retry(client, budget, model, temp, prompt, retries, rate_limiter=limiter)
             with response_lock:
                 response_count += 1
             record = {'provider': provider, 'meeting_id': code, 'date': str(date.date()), 'sample_idx': sample,
