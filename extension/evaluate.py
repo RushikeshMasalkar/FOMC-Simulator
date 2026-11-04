@@ -31,6 +31,8 @@ def metrics(y, p):
             (p < 0).any() or not np.allclose(p.sum(axis=1), 1)):
         raise ValueError('invalid labels/probabilities')
     y = y.astype(int)
+    if (np.isclose(p, p.max(axis=1, keepdims=True), rtol=0, atol=1e-12).sum(axis=1) > 1).any():
+        raise ValueError('tied top probabilities have no unambiguous hard decision')
     pred = p.argmax(axis=1)
     return {'accuracy': accuracy_score(y, pred),
             'macro_f1': f1_score(y, pred, labels=[0, 1, 2], average='macro', zero_division=0),

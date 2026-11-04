@@ -18,7 +18,7 @@ python -m pip install "google-genai>=2.0,<3.0"
 
 All examples below run from the project root. Existing market data are read from `data/fred/`. `--stage market` downloads FRED public CSVs without a key; users who have already run it should not repeat it. Market settings and the meeting-file hash must match those recorded in `results/market_metadata.json`.
 
-Before a CLI stage that writes results, the entire existing `results/` directory is copied to a timestamped `results_backups/` folder. Downloaded FRED inputs and previous caches are not deleted or overwritten. Still make your own independent backup of your project, results, data and cache before applying updates; a filesystem copy can fail if the disk is full. Dry runs, the local diagnostic, and the probe do not write results. The diagnostic makes no network call; the probe makes one paid or quota-limited request. Never run simultaneous processes sharing one cache.
+Before a CLI stage writes results, it refuses to overwrite existing stage outputs. Existing output directories are copied to timestamped sibling backup directories before writes, and existing run configurations are not overwritten. Downloaded FRED inputs and prior caches are not intentionally deleted or overwritten. Still make an independent backup before applying updates; a filesystem copy can fail if the disk is full. Dry runs, the local diagnostic, and the probe do not write results. The diagnostic makes no network call; the probe makes one paid or quota-limited request. Never run simultaneous processes sharing one cache.
 
 ## Fusion: no LLM cost
 
@@ -55,53 +55,38 @@ python -m extension.run_all --stage probe --provider gemini --model gemini-3.1-f
 
 Success prints provider, model, one request, the validated vote class and numeric token usage; raw response text is not printed. A failed Gemini request reports the HTTP status, a safely allowlisted endpoint and a sanitized classification of the response body; it never prints raw response bodies, query parameters, authentication headers, proxy addresses or key values. An HTML 400 page alone does not prove whether Google or an intermediary produced it. Authentication, model access, account quota, network/proxy configuration and request validity are possible causes. See `docs/gemini_probe_debug.md`. We have tested provider logic with mocks only, not a live Gemini request.
 
-Dry-run estimate (free, no key required):
+### Approved tie and review policy
+
+A sample has a committee decision only when at least two of the three role votes agree. A 1–1–1 cut/hold/hike split is **unresolved**, never a hold or an arbitrary tie-break. The ensemble distribution uses the existing half-count smoothing applied only to resolved sample decisions. It is therefore **conditional on resolution**; report the number unresolved and possible selection bias. A meeting with no resolved sample has no ensemble probability and cannot be scored. A tie in the highest ensemble or other model probabilities is also unresolved for hard classification; evaluation excludes that date from the common six-variant intersection and records it, rather than using `argmax` to choose the first class. Probabilistic training can still use an available conditional distribution with tied maxima.
+
+The signed final line remains the recorded vote. The parser does **not** automatically establish whether prose is consistent with that line. Use `--flag_vote MEETING:SAMPLE:ROLE` for each human-reported inconsistency, for example `--flag_vote 23_2:0:regional`, after reviewing the cached response. A flag must identify a matching, already-cached record; otherwise execution stops before provider requests. Flagging does not rewrite, remove, reinterpret or resample the response. Other responses remain `not_reviewed`; this is not evidence that they are consistent. Preserve the flag on every invocation that writes an audit.
+
+### Before paid calls
+
+Run a no-cost cache estimate:
 
 ```powershell
-python -m extension.run_all --stage ensemble --provider gemini --model gemini-3.1-flash-lite --dry_run --k 7 --temp 0.7 --max_calls 0
+python -m extension.run_all --stage ensemble --provider gemini --model gemini-3.1-flash-lite --k 7 --temp 0.7 --dry_run --max_calls 0
 ```
 
-For four checked-in transcripts and no Gemini cache, it shows 84 requests (four meetings × seven samples × three member votes). Cached responses reduce this number. The cache is provider/model/temperature/role/prompt-specific under `cache/ensemble/gemini/`; legacy caches without provider metadata are never silently reused. Provider output, usage and prompt hash are stored, including malformed outputs for review. Invalid cached responses halt the run and are never silently retried. A complete cached sample that has no strict majority now stops **before** any remaining provider requests are scheduled; its responses are retained. This guard cannot predict a tie in an as-yet-uncached sample, which may still be discovered only after requests have completed. Back up and inspect responses before deciding what to do; resampling would cost another request and change the research procedure. Request retries use bounded exponential backoff for rate limits and transient errors; Google SDK automatic retries are disabled so each attempt is counted. A crash after the provider processes a request but before the cache is saved can still cause a charge on retry.
+The four checked-in transcripts require 84 successful requests if uncached. A matching K=1 sample-zero cache can be reused for K=7 because K is not part of the cache key. Each role record must match provider, model, temperature, prompt hash, meeting, sample and role. Invalid or inconsistent-provenance cached records halt before new calls, are retained, and are not silently retried. Inspect the cached transcripts; do not remove or modify them to force an output.
 
-A 1–1–1 cut/hold/hike split is currently **unresolved**, not a hold, and stops the ensemble. No approved policy yet specifies how such samples enter K-ensemble probabilities or evaluation. In particular, excluding unresolved samples would make probabilities conditional on a strict majority and could introduce selection bias. Do not proceed to the paid batch until a policy and budget are approved. The parser uses the signed final vote line; it does not verify that the prose is logically consistent with that line. Preserve and inspect any inconsistent cached response instead of silently correcting it. Non-dry stages write configuration and may write outputs; use a separate `--outdir` when preserving an existing results directory.
+The user reported that the first three responses are cached and the regional response's reasoning conflicts with its signed vote. This was not independently verified in the sandbox. The user approved preserving the signed vote and flagging the reported inconsistency. Once cache compatibility is checked, the existing sample can be audited without any API calls by using `--stage ensemble --k 1 --limit_meetings 1 --max_calls 0 --workers 1 --flag_vote 23_2:0:regional` with a **new** `--outdir`. It produces an unresolved meeting audit and an empty probability table, not an invented decision.
 
-After reviewing price, quota and the probe result, run the three-meeting smoke test:
+The paid K=7 batch must be explicitly authorized after the cache count and actual cost implications are reviewed. For three meetings it requires at most 63 successful requests from an empty cache; the fourth meeting adds 21. `--max_calls` is a **per-process attempt cap**, including retries—not a token or monetary cap. Inspect the 3-meeting smoke output before authorizing/completing the rest. The code replays votes from frozen discussions and is **not** a full CrewAI rerun.
 
-```powershell
-python -m extension.run_all --stage ensemble --provider gemini --model gemini-3.1-flash-lite --limit_meetings 3 --k 7 --temp 0.7 --max_calls 70 --workers 1
-```
+### Outputs and preservation
 
-It requires 63 successful requests if uncached, with up to seven retries allowed by the invocation budget. `--max_calls` is a **per-process request cap**, not a token or monetary cap. `--workers 1` is slower but gentler on rate limits. Inspect all printed votes and cached JSON responses before completing the batch. The code samples the three member votes from a frozen discussion log and applies strict-majority aggregation; it is **not** a full CrewAI rerun and does not preserve all CrewAI retrieval, system prompts or memory state.
+Choose a fresh output directory for each smoke or full run. The CLI refuses to overwrite existing stage outputs and writes a new timestamped run configuration if one already exists. For final evaluation, copy (do not move) the existing `market_oos.csv` and `market_metadata.json` into the new full-run output directory; leave the original `results/` and `results_backups/` untouched. Run `--stage eval` with the same provider, model, K, temperature and `--outdir` as the completed full ensemble. Do not use `--stage all` to replace existing results.
 
-Then inspect actual remaining cache misses:
+- `ensemble_votes.csv`: each role's signed class, sample decision/status, source, human-reported review flag and available token counts.
+- `ensemble_meetings.csv`: resolved/unresolved sample counts, inconsistency flags and hard-decision status, including meetings with no resolved samples.
+- `ensemble.csv`: conditional probabilities for meetings with at least one resolved sample, coverage and provider/model/policy metadata.
+- `ensemble_run.json`: this invocation's provider attempts, successful/new and cached records, failures and recorded usage totals. Previous unrecorded failures and costs remain unknown. Failed or invalid invocations also write a safe summary; use a new output directory when resuming.
+- `evaluation_exclusions.csv`: top-probability ties and, when available, meetings with no resolved samples. All six compared variants use the same remaining intersection.
+- `evaluation_predictions.csv`, `ablation.md`, `ablation.csv`, `confusion_and_classes.json`, `all_fusion_theta.csv`, `fusion_theta.csv` and `figures/`: final comparative outputs when sufficient common data exist.
+- `run_config.json` or timestamped `run_config-*.json`: arguments, package versions and provenance, without keys.
 
-```powershell
-python -m extension.run_all --stage ensemble --provider gemini --model gemini-3.1-flash-lite --dry_run --k 7 --temp 0.7 --max_calls 0
-```
-
-If the smoke test completed and settings are unchanged, 21 successful calls remain. With room for four retries:
-
-```powershell
-python -m extension.run_all --stage ensemble --provider gemini --model gemini-3.1-flash-lite --k 7 --temp 0.7 --max_calls 25 --workers 1 --approve_full_batch
-```
-
-If more than 25 uncached requests remain, the command stops before spending; first inspect the dry-run count and failures, then choose a budget. Old un-namespaced OpenAI caches are preserved but are not automatically reused because their provider provenance is unclear. Existing `results/ensemble.csv` files without provider metadata are not silently assumed to be OpenAI; use a properly audited `--ensemble_csv` or regenerate.
-
-## Final evaluation
-
-```powershell
-python -m extension.run_all --stage eval --provider gemini --model gemini-3.1-flash-lite --k 7 --temp 0.7
-```
-
-The model, provider, K and temperature must match the ensemble run. The six variants use the same intersection of scoreable meetings. Outputs include:
-
-- `results/ablation.md`, `results/ablation.csv`: metrics and conditional 95% meeting-bootstrap intervals.
-- `results/evaluation_predictions.csv`: meeting-level probabilities, labels and dates.
-- `results/baseline_provenance.json`: task-source recovery evidence.
-- `results/all_fusion_theta.csv`, `results/fusion_theta.csv`: fold parameters; weights are conditional associations, not causal contributions or normalized trust shares.
-- `results/confusion_and_classes.json`: confusion matrices and class-specific precision/recall, with null for unavailable values.
-- `results/figures/`: reliability diagram and parameter plot.
-
-The paired full-minus-replication MCC and log-loss differences are in the Markdown report. The report can include a pre/post knowledge-cutoff split only when a validated `--cutoff YYYY-MM-DD` is supplied. `results/run_config.json` logs stage configuration and package versions, not secrets. Preserve each predeclared ablation in a separate `--outdir`; do not select models using the test results. The output directory is backed up before it is written.
+Token sums cover only available metadata in cached/new responses; failed attempts, previous invocations and missing usage can be unrecorded. A provider attempt with no response returned to the application may still have incurred charges. A returned response that cannot be saved is counted separately from provider failures; its usage may be unavailable. Output token counts and thinking token counts are reported separately and should not automatically be added to a reported total. Never claim statistical significance from the four-meeting data; nested evaluation has at most two dates before exclusions. Macro-F1 includes all classes, undefined metrics are N/A, and bootstrap intervals are conditional and unstable.
 
 OpenAI remains selectable with `--provider openai --model gpt-4o-mini` and `OPENAI_API_KEY`; the provider is restricted to the official OpenAI endpoint. The old OpenAI-only cache layout is preserved on disk but cannot be trusted as provider-identified; new calls use separate namespaces. `--stage probe` and paid ensemble runs are opt-in. The default provider remains OpenAI for backward CLI compatibility, so **always specify `--provider gemini`** for this workflow.

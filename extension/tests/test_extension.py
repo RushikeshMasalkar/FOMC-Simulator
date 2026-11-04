@@ -529,37 +529,39 @@ def test_diagnostic_rejects_untrusted_child_fields(monkeypatch, capsys):
     assert secret not in captured.out + captured.err
 
 
-def test_cached_tie_stops_before_new_calls_and_preserves_all_votes(tmp_path, monkeypatch):
-    """A known tie in sample zero must not spend on the rest of K."""
+def test_unresolved_cached_tie_is_preserved_and_excluded_from_probabilities(tmp_path, monkeypatch):
     from extension import ensemble
-    calls = []
+    calls, per_role = [], {}
     class Fake:
         def request(self, model, temp, prompt):
             calls.append(1)
-            if prompt.startswith('As Regional Pragmatists,'):
-                return 'Reasoning mentions a cut.\nINTEREST RATE VOTE: +0.25%', None
-            if prompt.startswith('As Academic Balancers,'):
-                return 'INTEREST RATE VOTE: -0.25%', None
-            return 'INTEREST RATE VOTE: 0.00%', None
+            role = next(role for role, label in ensemble.ROLES.items() if prompt.startswith(f'As {label},'))
+            sample = per_role.get(role, 0)
+            per_role[role] = sample + 1
+            if sample:
+                return 'INTEREST RATE VOTE: 0.00%', {'prompt_token_count': 10}
+            return {'regional': 'Reasoning mentions a cut.\nINTEREST RATE VOTE: +0.25%',
+                    'academic': 'INTEREST RATE VOTE: -0.25%',
+                    'central': 'INTEREST RATE VOTE: 0.00%'}[role], None
         def retryable(self, error): return False
     monkeypatch.setattr(ensemble, 'make_provider', lambda provider: Fake())
     meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
     args = (meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7)
-    with pytest.raises(ValueError, match='No strict majority'):
-        run_ensemble(*args, k=1, max_calls=3, workers=1, provider='gemini')
-    assert len(calls) == 3
+    first = run_ensemble(*args, k=1, max_calls=3, workers=1, provider='gemini')
+    assert first.empty and first.attrs['meeting_audit'][0]['decision_status'] == 'no_resolved_samples'
     paths = sorted(tmp_path.rglob('*.json'))
-    assert len(paths) == 3
     before = {path: path.read_bytes() for path in paths}
-    def no_provider(provider):
-        raise AssertionError('known tie must not initialize a provider')
-    monkeypatch.setattr(ensemble, 'make_provider', no_provider)
-    with pytest.raises(ValueError, match='no new provider calls made'):
-        run_ensemble(*args, k=2, max_calls=3, workers=1, provider='gemini')
-    assert len(calls) == 3
-    assert sorted(tmp_path.rglob('*.json')) == paths
+    result = run_ensemble(*args, k=2, max_calls=3, workers=1, provider='gemini',
+                          flag_votes=['23_2:0:regional'])
+    assert len(calls) == 6 and len(list(tmp_path.rglob('*.json'))) == 6
     assert {path: path.read_bytes() for path in paths} == before
-    # The explicit final line is parsed as a hike; prose is not reinterpreted.
+    assert result.p_ens_hold.iloc[0] == pytest.approx(.6)
+    assert result.resolved_samples.iloc[0] == 1 and result.unresolved_samples.iloc[0] == 1
+    assert result.attrs['run_audit']['reused_cache_records'] == 3
+    assert result.attrs['run_audit']['provider_attempts_this_invocation'] == 3
+    regional = next(v for v in result.attrs['vote_audit'] if v['sample_idx'] == 0 and v['role'] == 'regional')
+    assert regional['vote'] == 2 and regional['review_status'] == 'reported_inconsistency'
+    assert regional['sample_status'] == 'unresolved' and regional['source'] == 'existing_cache'
     assert ensemble.parse_response('Reasoning mentions a cut.\nINTEREST RATE VOTE: +0.25%') == 2
 
 
@@ -651,3 +653,158 @@ def test_openai_errors_are_redacted_and_rate_limits_remain_retryable(monkeypatch
     budget = CallBudget(2)
     text, _ = call_with_retry(provider, budget, 'fake-model', .7, 'prompt', retries=1)
     assert text == 'INTEREST RATE VOTE: 0.00%' and budget.used == 2
+
+
+def test_ensemble_cli_writes_audit_and_refuses_to_overwrite(tmp_path, monkeypatch):
+    from extension import ensemble
+    from extension.run_all import main
+    calls, per_role = [], {}
+    class Fake:
+        def request(self, model, temp, prompt):
+            calls.append(1)
+            role = next(r for r, name in ensemble.ROLES.items() if prompt.startswith(f'As {name},'))
+            count = per_role.get(role, 0); per_role[role] = count + 1
+            first = {'regional': '+0.25%', 'academic': '-0.25%', 'central': '0.00%'}
+            return 'INTEREST RATE VOTE: ' + (first[role] if count == 0 else '0.00%'), {
+                'prompt_token_count': 10, 'candidates_token_count': 3, 'total_token_count': 13}
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda provider: Fake())
+    meetings_input = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    run_ensemble(meetings_input, 'chain_of_draft/results', tmp_path / 'cache',
+                 'gemini-3.1-flash-lite', .7, k=1, max_calls=3, workers=1, provider='gemini')
+    out = tmp_path / 'new_results'
+    args = ['--stage', 'ensemble', '--provider', 'gemini', '--model', 'gemini-3.1-flash-lite',
+            '--k', '2', '--limit_meetings', '1', '--max_calls', '3', '--workers', '1',
+            '--cache_dir', str(tmp_path / 'cache'), '--outdir', str(out), '--flag_vote', '23_2:0:regional']
+    assert main(args) == 0 and len(calls) == 6
+    votes = pd.read_csv(out / 'ensemble_votes.csv')
+    meetings = pd.read_csv(out / 'ensemble_meetings.csv')
+    probs = pd.read_csv(out / 'ensemble.csv')
+    report = json.loads((out / 'ensemble_run.json').read_text())
+    assert len(votes) == 6 and (votes.review_status == 'reported_inconsistency').sum() == 1
+    assert meetings.resolved_samples.iloc[0] == 1 and meetings.unresolved_samples.iloc[0] == 1
+    assert probs.ensemble_policy.iloc[0] == 'resolved_only_strict_majority_v1'
+    assert report['provider_attempts_this_invocation'] == 3 and report['new_responses'] == 3
+    assert report['reused_cache_records'] == 3
+    assert report['new_response_token_usage']['input_tokens'] == {'total': 30, 'records_with_usage': 3, 'records': 3}
+    assert report['existing_cache_token_usage']['input_tokens'] == {'total': 30, 'records_with_usage': 3, 'records': 3}
+    before = {p.relative_to(out): p.read_bytes() for p in out.rglob('*') if p.is_file()}
+    assert main(args) == 1 and len(calls) == 6
+    assert before == {p.relative_to(out): p.read_bytes() for p in out.rglob('*') if p.is_file()}
+    assert not (tmp_path / 'new_results_backups').exists()
+
+
+def test_unknown_vote_flag_stops_before_calls(tmp_path, monkeypatch):
+    from extension import ensemble
+    monkeypatch.setattr(ensemble, 'make_provider', lambda provider: pytest.fail('no provider call allowed'))
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    with pytest.raises(ValueError, match='Vote flag does not match'):
+        run_ensemble(meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7, 1,
+                     max_calls=3, provider='gemini', flag_votes=['23_2:5:regional'])
+    assert not list(tmp_path.rglob('*.json'))
+
+
+def test_metrics_rejects_tied_maxima_instead_of_defaulting_to_cut():
+    with pytest.raises(ValueError, match='tied top probabilities'):
+        metrics([0], [[.5, .5, 0.]])
+
+
+def test_final_eval_excludes_tied_maxima_from_common_intersection(tmp_path):
+    from extension.run_all import main, parser, market_settings
+    out = tmp_path / 'results'; out.mkdir()
+    args = parser().parse_args(['--stage', 'eval', '--provider', 'gemini', '--outdir', str(out)])
+    (out / 'market_metadata.json').write_text(json.dumps({'settings': market_settings(args)}))
+    dates = pd.to_datetime(['2023-02-01','2023-05-03','2024-03-20','2024-09-18'])
+    pd.DataFrame({'Date': dates, 'y': [2,2,1,0], 'p_mkt_cut': [.2]*4,
+                  'p_mkt_hold': [.6]*4, 'p_mkt_hike': [.2]*4,
+                  'train_max_date': pd.to_datetime(['2022-12-14']*2 + ['2023-12-13']*2),
+                  'test_year': [2023,2023,2024,2024]}).to_csv(out / 'market_oos.csv', index=False)
+    pd.DataFrame({'Date': dates, 'p_ens_cut': [.2,.2,.4,.6], 'p_ens_hold': [.6,.6,.4,.2],
+                  'p_ens_hike': [.2,.2,.2,.2], 'ensemble_k': [7]*4,
+                  'ensemble_model': ['gemini-3.1-flash-lite']*4, 'ensemble_temp': [.7]*4,
+                  'ensemble_provider': ['gemini']*4,
+                  'ensemble_policy': ['resolved_only_strict_majority_v1']*4}).to_csv(out / 'ensemble.csv', index=False)
+    assert main(['--stage', 'eval', '--provider', 'gemini', '--outdir', str(out)]) == 0
+    exclusions = pd.read_csv(out / 'evaluation_exclusions.csv')
+    assert any((exclusions.Date == '2024-03-20') & (exclusions.variant == 'K-ensemble only'))
+    predictions = pd.read_csv(out / 'evaluation_predictions.csv')
+    assert predictions.Date.tolist() == ['2024-09-18']
+    assert len(pd.read_csv(out / 'ablation.csv')) == 6
+
+
+def test_failed_ensemble_cli_records_invalid_counts_and_preserves_cache(tmp_path, monkeypatch, capsys):
+    from extension import ensemble
+    from extension.run_all import main
+    secret = 'sensitive-text-not-for-diagnostics'
+    calls = []
+    class Fake:
+        def request(self, *args):
+            calls.append(1)
+            return 'not a vote ' + secret, None
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    common = ['--stage', 'ensemble', '--provider', 'gemini', '--k', '1', '--limit_meetings', '1',
+              '--max_calls', '3', '--workers', '1', '--cache_dir', str(tmp_path / 'cache')]
+    out1 = tmp_path / 'failed_run'
+    assert main(common + ['--outdir', str(out1)]) == 1
+    captured = capsys.readouterr()
+    assert secret not in captured.out + captured.err
+    report = json.loads((out1 / 'ensemble_run.json').read_text())
+    assert report['completed'] is False and report['invalid_new_responses'] == 3
+    assert report['provider_attempts_this_invocation'] == 3 and report['failed_provider_attempts_this_invocation'] == 0
+    paths = sorted((tmp_path / 'cache').rglob('*.json'))
+    before = {p: p.read_bytes() for p in paths}
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: pytest.fail('invalid cache must stop before calls'))
+    out2 = tmp_path / 'failed_resume'
+    assert main(common + ['--outdir', str(out2)]) == 1
+    report2 = json.loads((out2 / 'ensemble_run.json').read_text())
+    assert report2['invalid_cached_records'] == 3 and report2['provider_attempts_this_invocation'] == 0
+    assert {p: p.read_bytes() for p in paths} == before
+
+
+def test_failed_provider_attempts_counted_and_redacted(tmp_path, monkeypatch, capsys):
+    from extension import ensemble
+    from extension.run_all import main
+    class Fake:
+        def request(self, *args): raise RuntimeError('sensitive-provider-secret')
+        def retryable(self, error): return False
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    out = tmp_path / 'failed_provider'
+    args = ['--stage','ensemble','--provider','gemini','--k','1','--limit_meetings','1',
+            '--max_calls','3','--workers','1','--cache_dir',str(tmp_path / 'cache'),'--outdir',str(out)]
+    assert main(args) == 1
+    captured = capsys.readouterr()
+    assert 'sensitive-provider-secret' not in captured.out + captured.err
+    audit = json.loads((out / 'ensemble_run.json').read_text())
+    assert audit['provider_attempts_this_invocation'] == 3
+    assert audit['failed_provider_attempts_this_invocation'] == 3
+    assert audit['invalid_new_responses'] == 0 and audit['failed_jobs'] == 3
+    assert audit['prior_provider_attempts_and_failures'] == 'unknown'
+
+
+def test_flagged_vote_must_match_existing_cache_before_spending(tmp_path, monkeypatch):
+    from extension import ensemble
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: pytest.fail('no provider call allowed'))
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    with pytest.raises(ValueError, match='flagged vote has no matching cached response'):
+        run_ensemble(meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7, 1,
+                     max_calls=3, provider='gemini', flag_votes=['23_2:0:regional'])
+    assert not list(tmp_path.rglob('*.json'))
+
+
+def test_cache_write_failure_is_not_misreported_as_provider_failure(tmp_path, monkeypatch):
+    from extension import ensemble
+    from pathlib import Path
+    class Fake:
+        def request(self, model, temp, prompt): return 'Dissenting Vote: 0.00%', {}
+    monkeypatch.setattr(ensemble, 'make_provider', lambda _: Fake())
+    monkeypatch.setattr(Path, 'write_text', lambda *args, **kwargs: (_ for _ in ()).throw(OSError('disk full')))
+    meetings = pd.DataFrame({'Date': pd.to_datetime(['2023-02-01'])})
+    with pytest.raises(ensemble.EnsembleRunError) as caught:
+        run_ensemble(meetings, 'chain_of_draft/results', tmp_path, 'gemini-3.1-flash-lite', .7, 1,
+                     max_calls=3, workers=1, provider='gemini')
+    audit = caught.value.audit
+    assert audit['provider_attempts_this_invocation'] == 3
+    assert audit['provider_responses_this_invocation'] == 3
+    assert audit['failed_provider_attempts_this_invocation'] == 0
+    assert audit['new_responses'] == 0 and audit['failed_jobs'] == 3
