@@ -66,3 +66,6 @@ retry_*.txt
 # Backup files
 *_backup.py
 *backup*.py
+# Extension: downloaded market data and potentially sensitive LLM outputs
+/data/fred/
+/cache/ensemble/
