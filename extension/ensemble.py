@@ -1,8 +1,4 @@
-"""Resample three voting roles from saved discussions, not the summary task.
-
-This deliberately does not claim byte-for-byte CrewAI equivalence: CrewAI memory,
-retrieval and runtime prompts are not preserved by the logged discussions.
-"""
+"""Sample member votes from saved discussions, not a full CrewAI replay."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import hashlib
@@ -13,6 +9,7 @@ import time
 import pandas as pd
 from .committee import majority, meeting_code, parse_vote
 from .fusion import smooth_votes
+from .providers import make_provider
 
 ROLES = {'regional': 'Regional Pragmatists', 'academic': 'Academic Balancers', 'central': 'Central Policymakers'}
 HEADER = re.compile(r'(?m)^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d: task_name="')
@@ -57,6 +54,7 @@ class CallBudget:
         if maximum < 0:
             raise ValueError('max_calls must be non-negative')
         self.maximum, self.used, self.lock = maximum, 0, threading.Lock()
+
     def acquire(self):
         with self.lock:
             if self.used >= self.maximum:
@@ -64,14 +62,44 @@ class CallBudget:
             self.used += 1
 
 
-def cache_path(directory, meeting, idx, model, temp, role, prompt):
-    key = json.dumps([meeting, idx, model, temp, role, prompt], ensure_ascii=False, separators=(',', ':'))
+def cache_path(directory, meeting, idx, model, temp, role, prompt, provider='openai'):
+    key = json.dumps([provider, meeting, idx, model, temp, role, prompt], ensure_ascii=False, separators=(',', ':'))
     digest = hashlib.sha256(key.encode()).hexdigest()
-    return Path(directory) / meeting / f'{idx:03d}-{role}-{digest}.json'
+    return Path(directory) / provider / meeting / f'{idx:03d}-{role}-{digest}.json'
+
+
+def call_with_retry(client, budget, model, temp, prompt, retries=3):
+    for attempt in range(retries + 1):
+        budget.acquire()
+        try:
+            return client.request(model, temp, prompt)
+        except Exception as error:
+            if not client.retryable(error) or attempt == retries:
+                raise
+            time.sleep(min(2 ** attempt, 16))
+
+
+def probe(provider, model, temp, max_calls):
+    """One user-authorized request, not cached; costs money if the API charges."""
+    if max_calls < 1:
+        raise ValueError('probe needs --max_calls >= 1; no calls made')
+    client = make_provider(provider)
+    budget = CallBudget(max_calls)
+    prompt = 'For a connectivity test, output exactly: INTEREST RATE VOTE: 0.00%'
+    try:
+        text, usage = call_with_retry(client, budget, model, temp, prompt, retries=0)
+        parse_response(text)
+    except Exception as error:
+        raise RuntimeError(f'Provider probe failed ({type(error).__name__}): {error}') from error
+    print(f'Probe succeeded: provider={provider}, model={model}, requests={budget.used}.')
+    print(f'Response: {text}')
+    print(f'Usage: {usage}')
 
 
 def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
-                 dry_run=False, limit=None, approve_full_batch=False, retries=3):
+                 dry_run=False, limit=None, approve_full_batch=False, retries=3, provider='openai'):
+    if provider not in ('openai', 'gemini'):
+        raise ValueError('provider must be openai or gemini')
     if k < 1 or not 0 < temp <= 2 or workers < 1:
         raise ValueError('K >= 1, workers >= 1 and 0 < temperature <= 2 are required')
     if limit is not None and limit < 1:
@@ -93,41 +121,47 @@ def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
         for sample in range(k):
             for role in ROLES:
                 prompt = vote_prompt(role, date, context)
-                path = cache_path(cache, code, sample, model, temp, role, prompt)
+                path = cache_path(cache, code, sample, model, temp, role, prompt, provider)
                 jobs.append((date, code, sample, role, prompt, path))
     missing = [job for job in jobs if not job[-1].exists()]
-    print(f'Ensemble: {len(available)} meetings, K={k}, {len(jobs)} total vote calls, '
-          f'{len(missing)} uncached; retries count against max_calls={max_calls}.')
+    print(f'Ensemble: provider={provider}, model={model}; {len(available)} meetings, K={k}, '
+          f'{len(jobs)} total vote calls, {len(missing)} uncached; retries count against max_calls={max_calls}.')
     if dry_run:
         return None
     if len(available) > 5 and not approve_full_batch:
         raise ValueError('Run and inspect a 3–5 meeting smoke test first; then pass --approve_full_batch')
     if len(missing) > max_calls:
         raise RuntimeError(f'At least {len(missing)} calls needed, exceeding max_calls={max_calls}; no calls made')
+    # Fail before spending if any prior cached response is malformed or has wrong provenance.
+    def read_record(job):
+        date, code, sample, role, prompt, path = job
+        record = json.loads(path.read_text(encoding='utf-8'))
+        expected = {'provider': provider, 'meeting_id': code, 'sample_idx': sample, 'model': model,
+                    'temperature': temp, 'role': role, 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest()}
+        if any(record.get(k) != v for k, v in expected.items()):
+            raise ValueError(f'{path}: cache metadata mismatch; inspect and retain the file')
+        try:
+            return parse_response(record['text'])
+        except (ValueError, KeyError, TypeError) as e:
+            raise ValueError(f'{path}: invalid cached vote: {e}; inspect the response before retrying') from e
+    for job in jobs:
+        if job[-1].exists():
+            read_record(job)
     budget = CallBudget(max_calls)
     if missing:
-        from openai import OpenAI, RateLimitError, APIConnectionError, APITimeoutError, InternalServerError
-        client = OpenAI(max_retries=0)  # retries must be counted by our budget
+        client = make_provider(provider)
         def invoke(job):
             date, code, sample, role, prompt, path = job
-            for attempt in range(retries + 1):
-                budget.acquire()
-                try:
-                    response = client.chat.completions.create(model=model, temperature=temp,
-                        messages=[{'role': 'user', 'content': prompt}])
-                    text = response.choices[0].message.content or ''
-                    record = {'meeting_id': code, 'date': str(date.date()), 'sample_idx': sample,
-                              'model': model, 'temperature': temp, 'role': role, 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
-                              'text': text, 'usage': response.usage.model_dump() if response.usage else None}
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    tmp = path.with_suffix('.tmp')
-                    tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
-                    tmp.replace(path)
-                    return
-                except (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError):
-                    if attempt == retries:
-                        raise
-                    time.sleep(min(2 ** attempt, 16))
+            text, usage = call_with_retry(client, budget, model, temp, prompt, retries)
+            record = {'provider': provider, 'meeting_id': code, 'date': str(date.date()), 'sample_idx': sample,
+                      'model': model, 'temperature': temp, 'role': role,
+                      'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(), 'text': text, 'usage': usage}
+            # Every response, including an invalid one, is saved for audit before parsing.
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix('.tmp')
+            tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
+            tmp.replace(path)
+            return read_record(job)
         errors = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [pool.submit(invoke, job) for job in missing]
@@ -145,12 +179,9 @@ def run_ensemble(meetings, root, cache, model, temp, k, max_calls, workers=3,
         for sample in range(k):
             votes = []
             for role in ROLES:
-                path = cache_path(cache, code, sample, model, temp, role, vote_prompt(role, date, context))
-                record = json.loads(path.read_text(encoding='utf-8'))
-                try:
-                    votes.append(parse_response(record['text']))
-                except ValueError as e:
-                    raise ValueError(f'{path}: invalid cached vote: {e}') from e
+                prompt = vote_prompt(role, date, context)
+                path = cache_path(cache, code, sample, model, temp, role, prompt, provider)
+                votes.append(read_record((date, code, sample, role, prompt, path)))
             decisions.append(majority(votes))
             print(f'{code} sample {sample}: member votes={votes}, committee={decisions[-1]}')
         p = smooth_votes(decisions)

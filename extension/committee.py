@@ -1,10 +1,10 @@
-"""Load checked-in single-run committee outputs; reject ambiguous decisions."""
+"""Load committee decisions and conservatively recover corrupted summaries."""
 import json
-import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from .fusion import smooth_votes
+from .vote_audit import ROLES, audit_summary, named_votes, vote_number
 
 
 def meeting_code(date):
@@ -13,11 +13,8 @@ def meeting_code(date):
 
 
 def parse_vote(value):
-    """Accept explicitly signed or unsigned rate changes, never a rate level."""
-    match = re.fullmatch(r'\s*([+-]?\d+(?:\.\d+)?)\s*%\s*', str(value))
-    if not match:
-        raise ValueError(f'Unparseable vote {value!r}')
-    number = float(match.group(1))
+    """Accept quarter-point rate changes, not rate levels."""
+    number = float(vote_number(value))
     if abs(number) > 2 or not np.isclose(number * 4, round(number * 4), atol=1e-7):
         raise ValueError(f'Vote is not a plausible quarter-point rate change: {value!r}')
     return 0 if number < 0 else 2 if number > 0 else 1
@@ -31,8 +28,8 @@ def majority(votes):
 
 
 def load_baseline(meetings, root='chain_of_draft/results'):
-    """Use run1 only (fixed in advance); don't substitute a more favorable run."""
-    rows, rejected = [], []
+    """Use run 1; recover invalid JSON only if task and intermediate votes agree."""
+    rows, rejected, provenance = [], [], []
     for _, row in meetings.iterrows():
         code = meeting_code(row.Date)
         path = Path(root) / f'{code}_run1' / 'rate_summary.json'
@@ -42,14 +39,32 @@ def load_baseline(meetings, root='chain_of_draft/results'):
             rejected.append(f'{path}: ambiguous year/month meeting code; use an audited baseline CSV')
             continue
         try:
-            data = json.loads(path.read_text())
-            votes = data['rate_votes']
-            if len(votes) != 3 or len({v['member'] for v in votes}) != 3:
-                raise ValueError('expected three distinct members')
-            decision = majority([parse_vote(v['vote']) for v in votes])
+            raw = json.loads(path.read_text(encoding='utf-8'))
+            votes = named_votes(raw['rate_votes'])
+            audit = audit_summary(path)
+            try:
+                labels = [parse_vote(votes[name]) for name in ROLES.values()]
+                valid_summary = True
+            except ValueError:
+                valid_summary = False
+            if not audit['intermediate_matches_tasks']:
+                raise ValueError('task votes and intermediate vote_summary disagree; cannot safely resolve')
+            if valid_summary and not audit['final_matches_tasks']:
+                raise ValueError('valid summary conflicts with task votes; cannot safely resolve')
+            if not valid_summary:
+                votes = audit['task_votes']
+                labels = [parse_vote(votes[name]) for name in ROLES.values()]
+                source = 'recovered_from_completed_voting_tasks'
+            else:
+                source = 'final_json_verified_against_tasks'
+            decision = majority(labels)
             p = smooth_votes([decision])
             rows.append({'Date': row.Date, 'meeting_id': code, 'comm_decision': decision,
                          'p_comm_cut': p[0], 'p_comm_hold': p[1], 'p_comm_hike': p[2]})
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
+            provenance.append({'date': str(pd.Timestamp(row.Date).date()), 'meeting_id': code,
+                               'source': source, 'used_votes': votes, 'decision': decision, 'audit': audit})
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as e:
             rejected.append(f'{path}: {e}')
-    return pd.DataFrame(rows, columns=['Date', 'meeting_id', 'comm_decision', 'p_comm_cut', 'p_comm_hold', 'p_comm_hike']), rejected
+    result = pd.DataFrame(rows, columns=['Date', 'meeting_id', 'comm_decision', 'p_comm_cut', 'p_comm_hold', 'p_comm_hike'])
+    result.attrs['provenance'] = provenance
+    return result, rejected

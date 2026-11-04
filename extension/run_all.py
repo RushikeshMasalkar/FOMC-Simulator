@@ -4,6 +4,7 @@ import hashlib
 import importlib.metadata
 import json
 import platform
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,17 +14,18 @@ from .market_data import load_fred
 from .market_prior import load_meetings, build_features, walk_forward
 from .committee import load_baseline
 from .fusion import smooth_votes, walk_forward_fusion
-from .ensemble import run_ensemble
+from .ensemble import run_ensemble, probe
 from .evaluate import evaluate
 
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval'], default='all')
+    p.add_argument('--stage', choices=['all', 'market', 'fusion', 'ensemble', 'eval', 'probe'], default='all')
     p.add_argument('--k', type=int, default=7)
     p.add_argument('--temp', type=float, default=0.7)
     p.add_argument('--max_calls', type=int, default=0, help='Hard maximum API requests this invocation, including retries (default 0)')
-    p.add_argument('--model', default='gpt-4o-mini')
+    p.add_argument('--provider', choices=['openai', 'gemini'], default='openai')
+    p.add_argument('--model', help='Default: gpt-4o-mini for OpenAI, gemini-3.1-flash-lite for Gemini')
     p.add_argument('--dry_run', action='store_true')
     p.add_argument('--limit_meetings', type=int)
     p.add_argument('--workers', type=int, default=3)
@@ -47,7 +49,7 @@ def parser():
 
 
 def config(args, out):
-    names = ('numpy', 'pandas', 'scipy', 'scikit-learn', 'matplotlib', 'pandas-datareader', 'openai')
+    names = ('numpy', 'pandas', 'scipy', 'scikit-learn', 'matplotlib', 'pandas-datareader', 'openai', 'google-genai')
     versions = {}
     for name in names:
         try: versions[name] = importlib.metadata.version(name)
@@ -76,6 +78,9 @@ def baseline(meetings, args):
         return data
     data, rejected = load_baseline(meetings, args.baseline_root)
     for item in rejected: print('Rejected baseline:', item, file=sys.stderr)
+    for item in data.attrs.get('provenance', []):
+        if item['source'].startswith('recovered'):
+            print(f"Recovered {item['meeting_id']} from verified vote tasks; see baseline_provenance.json")
     if data.empty: raise ValueError('No valid checked-in single-run committee outputs')
     return data
 
@@ -112,6 +117,7 @@ def market_stage(meetings, args, out):
 def phase2(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n')
     joined = market.merge(single, on='Date', how='inner', validate='one_to_one')
     pred, theta = walk_forward_fusion(joined, min_fusion=args.min_fusion)
     folder = out / 'phase2'; folder.mkdir(parents=True, exist_ok=True)
@@ -120,15 +126,16 @@ def phase2(meetings, args, out):
                 'Replication (single run)': 'p_comm_', 'Replication + fusion': 'p_fused_'}
     table = evaluate(pred, variants, folder, args.bootstrap, args.seed, theta, args.cutoff, 'Phase 2: single-run fusion (not the six-variant final table)')
     print(f'Phase 2: {len(pred)} meetings; table at {folder / "ablation.md"}')
-    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string())
+    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string(na_rep='N/A'))
 
 
 def ensemble_stage(meetings, args, out):
     data = run_ensemble(meetings, args.baseline_root, args.cache_dir, args.model, args.temp,
-                        args.k, args.max_calls, args.workers, args.dry_run, args.limit_meetings, args.approve_full_batch)
+                        args.k, args.max_calls, args.workers, args.dry_run, args.limit_meetings, args.approve_full_batch, provider=args.provider)
     if data is not None:
         data['ensemble_k'] = args.k
         data['ensemble_model'] = args.model
+        data['ensemble_provider'] = args.provider
         data['ensemble_temp'] = args.temp
         data.to_csv(out / 'ensemble.csv', index=False)
         print(f'Saved {out / "ensemble.csv"}. Inspect the printed votes and cached outputs before a full run.')
@@ -137,10 +144,14 @@ def ensemble_stage(meetings, args, out):
 def final_eval(meetings, args, out):
     market = read_market(args, out)
     single = baseline(meetings, args)
+    (out / 'baseline_provenance.json').write_text(json.dumps(single.attrs.get('provenance', [{'source': 'external CSV', 'path': args.baseline_csv}]), indent=2) + '\n')
     ensemble = read_csv(args.ensemble_csv or out / 'ensemble.csv')
     if ensemble.Date.duplicated().any(): raise ValueError('duplicate ensemble dates')
     if not args.ensemble_csv:
-        expected = {'ensemble_k': args.k, 'ensemble_model': args.model, 'ensemble_temp': args.temp}
+        # Old outputs have no provider metadata and cannot be safely attributed.
+        if 'ensemble_provider' not in ensemble:
+            raise ValueError('Legacy ensemble lacks provider metadata; use an audited --ensemble_csv or regenerate')
+        expected = {'ensemble_k': args.k, 'ensemble_model': args.model, 'ensemble_temp': args.temp, 'ensemble_provider': args.provider}
         for key, value in expected.items():
             if key not in ensemble or not (ensemble[key] == value).all():
                 raise ValueError(f'Ensemble {key} differs from evaluation settings; pass matching flags or use a separate outdir')
@@ -161,16 +172,39 @@ def final_eval(meetings, args, out):
                 'Replication (single run)':'p_comm_', 'Replication + fusion':'p_fused_',
                 'K-ensemble only':'p_ens_', 'K-ensemble + fusion':'p_efused_'}
     table = evaluate(both, variants, out, args.bootstrap, args.seed, et, args.cutoff)
-    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string())
+    print(table[['accuracy', 'macro_f1', 'mcc', 'brier', 'log_loss', 'ece', 'ece_adaptive']].to_string(na_rep='N/A'))
     print(f'Full intersection: {len(both)} meetings; see {out / "ablation.md"}')
+
+
+def backup_results(out):
+    if not out.exists():
+        return
+    if not out.is_dir() or out.resolve() == Path.cwd().resolve():
+        raise ValueError('outdir must be a dedicated results directory, not the repository root')
+    root = out.parent / (out.name + '_backups')
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = root / stamp
+    shutil.copytree(out, backup)
+    print(f'Existing results backed up to {backup}')
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    out = Path(args.outdir); out.mkdir(parents=True, exist_ok=True)
-    config(args, out)
-    meetings = load_meetings(args.meetings)
+    if args.model is None:
+        args.model = 'gemini-3.1-flash-lite' if args.provider == 'gemini' else 'gpt-4o-mini'
+    out = Path(args.outdir)
     try:
+        if args.dry_run and args.stage not in ('ensemble',):
+            raise ValueError('--dry_run is supported with --stage ensemble only')
+        if not args.dry_run:
+            backup_results(out)
+            out.mkdir(parents=True, exist_ok=True)
+            config(args, out)
+        if args.stage == 'probe':
+            probe(args.provider, args.model, args.temp, args.max_calls)
+            return 0
+        meetings = load_meetings(args.meetings)
         if args.stage in ('all', 'market'): market_stage(meetings, args, out)
         if args.stage in ('all', 'fusion'): phase2(meetings, args, out)
         if args.stage in ('all', 'ensemble'): ensemble_stage(meetings, args, out)

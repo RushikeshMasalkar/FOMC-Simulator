@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, confusion_matrix, precision_recall_fscore_support
+from sklearn.metrics import accuracy_score, f1_score, matthews_corrcoef, confusion_matrix
 from .fusion import smooth_votes
 
 CLASSES = ('cut', 'hold', 'hike')
@@ -31,7 +31,7 @@ def metrics(y, p):
     pred = p.argmax(axis=1)
     return {'accuracy': accuracy_score(y, pred),
             'macro_f1': f1_score(y, pred, labels=[0, 1, 2], average='macro', zero_division=0),
-            'mcc': matthews_corrcoef(y, pred) if len(np.unique(y)) > 1 and len(np.unique(pred)) > 1 else 0.0,
+            'mcc': matthews_corrcoef(y, pred) if len(np.unique(y)) > 1 and len(np.unique(pred)) > 1 else np.nan,
             'brier': np.mean(np.sum((p - np.eye(3)[y]) ** 2, axis=1)),
             'log_loss': -np.mean(np.log(np.clip(p[np.arange(len(y)), y], 1e-15, 1))),
             'ece': ece(y, p), 'ece_adaptive': ece(y, p, adaptive=True)}
@@ -48,7 +48,9 @@ def confidence_intervals(y, variants, n_boot=1000, seed=42):
         boot = [metrics(y[ix], p[ix]) for ix in indices]
         samples[name] = {m: np.array([x[m] for x in boot]) for m in METRICS}
         for m in METRICS:
-            scores[name][m + '_lo'], scores[name][m + '_hi'] = np.quantile(samples[name][m], [.025, .975])
+            finite = samples[name][m][np.isfinite(samples[name][m])]
+            scores[name][m + '_lo'], scores[name][m + '_hi'] = (np.quantile(finite, [.025, .975])
+                if len(finite) else (np.nan, np.nan))
     return pd.DataFrame.from_dict(scores, orient='index'), samples
 
 
@@ -67,24 +69,31 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
     assert np.isclose(metrics(y, probs['Always-hold'])['accuracy'], hold_rate)
     table, bootstrap = confidence_intervals(y, probs, n_boot, seed)
     table.index.name = 'variant'
-    table.to_csv(out / 'ablation.csv')
+    table.to_csv(out / 'ablation.csv', na_rep='N/A')
     lines = [f'# {title}', '', f'N = {len(y)} common meetings; hold rate = {hold_rate:.3f}.',
              f'Percentile 95% CIs from {n_boot} paired meeting bootstrap resamples, seed {seed}.',
              'Brier is the sum across three classes; ECE is top-label confidence, 10 equal-width bins.',
              'Adaptive ECE uses up to 10 equal-count bins. Macro-F1 includes all three classes, with zero for missing classes.',
+             'MCC is N/A when its denominator is zero; bootstrap intervals use only defined replicates and may be unreliable.',
              'Always-hold and hard replication use smoothed one-hot probabilities (0.2, 0.6, 0.2); other variants use their predicted probabilities.', '',
              '| Variant | Accuracy | Macro-F1 | MCC | Brier | Log loss | ECE | Adaptive ECE |',
              '|---|---:|---:|---:|---:|---:|---:|---:|']
     for name, r in table.iterrows():
-        fmt = [f'{r[m]:.3f} [{r[m+"_lo"]:.3f}, {r[m+"_hi"]:.3f}]' for m in METRICS]
+        fmt = [(f'{r[m]:.3f} [{r[m+"_lo"]:.3f}, {r[m+"_hi"]:.3f}]'
+                if np.isfinite(r[m]) and np.isfinite(r[m+"_lo"]) and np.isfinite(r[m+"_hi"])
+                else (f'{r[m]:.3f} [N/A]' if np.isfinite(r[m]) else 'N/A')) for m in METRICS]
         lines.append('| ' + name + ' | ' + ' | '.join(fmt) + ' |')
     if 'K-ensemble + fusion' in probs and 'Replication (single run)' in probs:
         lines.extend(['', '## Paired bootstrap: full − replication', ''])
         for m in ('mcc', 'log_loss'):
             diff = bootstrap['K-ensemble + fusion'][m] - bootstrap['Replication (single run)'][m]
-            lo, hi = np.quantile(diff, [.025, .975])
+            finite = diff[np.isfinite(diff)]
             value = table.loc['K-ensemble + fusion', m] - table.loc['Replication (single run)', m]
-            lines.append(f'- {m}: {value:.3f} [{lo:.3f}, {hi:.3f}] (negative log-loss difference is better).')
+            if len(finite) and np.isfinite(value):
+                lo, hi = np.quantile(finite, [.025, .975])
+                lines.append(f'- {m}: {value:.3f} [{lo:.3f}, {hi:.3f}] ({len(finite)}/{n_boot} defined replicates; negative log-loss difference is better).')
+            else:
+                lines.append(f'- {m}: N/A (undefined for this sample or its bootstrap replicates).')
     if table.loc['Market-only logit', 'log_loss'] >= table.loc['Always-hold', 'log_loss']:
         lines.extend(['', '**Sanity check:** market-only did not beat smoothed always-hold on log loss. '
                       'Inspect fold sizes, class balance, regime shifts, source availability and feature timing; no test-driven retuning was applied.'])
@@ -94,11 +103,16 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
     for name, p in probs.items():
         pred = p.argmax(axis=1)
         cm = confusion_matrix(y, pred, labels=[0,1,2])
-        nonhold = confusion_matrix(y[y != 1], pred[y != 1], labels=[0,1,2])[[0,2], :]
-        prec, rec, _, _ = precision_recall_fscore_support(y, pred, labels=[0,1,2], zero_division=0)
-        diagnostics[name] = {'all': cm.tolist(), 'non_hold': nonhold.tolist(), 'precision': prec.tolist(), 'recall': rec.tolist()}
-        lines.extend([f'**{name}**  ', f'All: `{cm.tolist()}`  ', f'Non-hold: `{nonhold.tolist()}`  ',
-                      f'Precision (cut, hold, hike): `{np.round(prec, 3).tolist()}`; recall: `{np.round(rec, 3).tolist()}`.', ''])
+        mask = y != 1
+        nonhold = confusion_matrix(y[mask], pred[mask], labels=[0,1,2])[[0,2], :].tolist() if mask.any() else None
+        prec = [round(float(cm[i, i] / cm[:, i].sum()), 3) if cm[:, i].sum() else None for i in range(3)]
+        rec = [round(float(cm[i, i] / cm[i, :].sum()), 3) if cm[i, :].sum() else None for i in range(3)]
+        diagnostics[name] = {'all': cm.tolist(), 'non_hold': nonhold, 'precision': prec, 'recall': rec}
+        def show(values):
+            return str([x if x is not None else 'N/A' for x in values])
+        lines.extend([f'**{name}**  ', f'All: `{cm.tolist()}`  ',
+                      f'Non-hold: `{nonhold}`  ' if nonhold is not None else 'Non-hold: N/A (no non-hold meetings)  ',
+                      f'Precision (cut, hold, hike): `{show(prec)}`; recall: `{show(rec)}`.', ''])
     (out / 'confusion_and_classes.json').write_text(json.dumps(diagnostics, indent=2))
     lines.extend(['## Near-zero-rate calendar regimes', '',
                   'Calendar proxy: 2009–2015 and 2020–2021 (not an observation-level rate threshold).'])
@@ -118,7 +132,7 @@ def evaluate(df, variants, outdir='results', n_boot=1000, seed=42, theta=None,
             lines.append(f'- {label}: n={ix.sum()}')
             if ix.any():
                 for name, p in probs.items():
-                    m = metrics(y[ix], p[ix]); lines.append(f'  - {name}: accuracy {m["accuracy"]:.3f}, MCC {m["mcc"]:.3f}, log loss {m["log_loss"]:.3f}')
+                    m = metrics(y[ix], p[ix]); mcc = f'{m["mcc"]:.3f}' if np.isfinite(m['mcc']) else 'N/A'; lines.append(f'  - {name}: accuracy {m["accuracy"]:.3f}, MCC {mcc}, log loss {m["log_loss"]:.3f}')
     else:
         lines.extend(['## Model knowledge cutoff', '', 'Unknown; no pre/post-cutoff comparison was made.'])
     # Reliability: top-label confidence; empty bins omitted.
